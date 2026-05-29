@@ -27,6 +27,7 @@ captures/
 .cxx/
 *.aab
 output-metadata.json
+/app/release/*
 
 # IntelliJ
 .idea/
