@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Main White Play Button Shape (Rounded Rectangle) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,45C24,38.37 29.37,33 36,33L72,33C78.63,33 84,38.37 84,45L84,63C84,69.63 78.63,75 72,75L36,75C29.37,75 24,69.63 24,63Z" />
+
+    <!-- Red Skip Next Icon (Triangle + Bar) representing Ad-Skipping -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M46,44L46,64L62,54Z" />
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M64,44L64,64L68,64L68,44Z" />
+
+    <!-- SponsorBlock Green Indicator Segment -->
+    <path
+        android:fillColor="#3DDC84"
+        android:pathData="M40,70L68,70L68,73L40,73Z" />
+
+</vector>
