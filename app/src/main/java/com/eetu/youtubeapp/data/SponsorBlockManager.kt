@@ -107,6 +107,14 @@ class SponsorBlockManager(private val context: Context) {
         prefs.edit().putString("custom_user_agent", ua).apply()
     }
 
+    fun getSubtitleSize(): Int {
+        return prefs.getInt("subtitle_size", 100)
+    }
+
+    fun setSubtitleSize(size: Int) {
+        prefs.edit().putInt("subtitle_size", size).apply()
+    }
+
     suspend fun fetchSegments(videoID: String): List<Segment> = withContext(Dispatchers.IO) {
         try {
             val hash = sha256(videoID)

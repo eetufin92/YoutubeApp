@@ -15,10 +15,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,6 +38,7 @@ fun BrowserSettingsScreen(
     val sponsorBlockManager = remember { SponsorBlockManager(context) }
     
     var userAgent by remember { mutableStateOf(sponsorBlockManager.getUserAgent()) }
+    var subtitleSize by remember { mutableFloatStateOf(sponsorBlockManager.getSubtitleSize().toFloat()) }
     var statusMessage by remember { mutableStateOf("") }
 
     Scaffold(
@@ -74,6 +77,35 @@ fun BrowserSettingsScreen(
                 maxLines = 4
             )
 
+
+            Text(
+                text = "Video Subtitle Size: ${subtitleSize.toInt()}%",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Slider(
+                value = subtitleSize,
+                onValueChange = { subtitleSize = it },
+                valueRange = 25f..200f,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(
+                onClick = {
+                    sponsorBlockManager.setUserAgent(userAgent)
+                    sponsorBlockManager.setSubtitleSize(subtitleSize.toInt())
+                    statusMessage = "Settings saved! Some changes may require app restart."
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save Settings")
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             if (statusMessage.isNotEmpty()) {
@@ -82,16 +114,6 @@ fun BrowserSettingsScreen(
                     color = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
-            }
-
-            Button(
-                onClick = {
-                    sponsorBlockManager.setUserAgent(userAgent)
-                    statusMessage = "User Agent saved! Restart app to apply."
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Save User Agent")
             }
         }
     }

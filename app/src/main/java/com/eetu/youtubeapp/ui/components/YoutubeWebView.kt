@@ -74,7 +74,8 @@ fun YoutubeWebView(
     val context = LocalContext.current
     val sponsorBlockManager = remember { SponsorBlockManager(context) }
     val isDark = isSystemInDarkTheme()
-    
+    val subtitleSize = sponsorBlockManager.getSubtitleSize()
+
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
 
@@ -181,7 +182,7 @@ fun YoutubeWebView(
                             onLoadingStateChanged(false)
                             canGoBack = view?.canGoBack() ?: false
                             if (url?.contains("youtube.com") == true) {
-                                injectScripts(view, isDark)
+                                injectScripts(view, isDark, subtitleSize)
                                 
                                 CoroutineScope(Dispatchers.Main).launch {
                                     var lastUrl = url
@@ -191,7 +192,7 @@ fun YoutubeWebView(
                                         if (currentUrl != null && currentUrl != lastUrl) {
                                             lastUrl = currentUrl
                                             canGoBack = view.canGoBack()
-                                            injectScripts(view, isDark)
+                                            injectScripts(view, isDark, subtitleSize)
                                         }
                                     }
                                 }
@@ -286,6 +287,29 @@ fun YoutubeWebView(
                     view.loadUrl(loadUrlRequest)
                     onUrlLoaded()
                 }
+
+                // Update subtitle size dynamically
+                view.evaluateJavascript("""
+                    (function() {
+                        var styleId = 'sb-subtitle-style';
+                        var style = document.getElementById(styleId);
+                        if (!style) {
+                            style = document.createElement('style');
+                            style.id = styleId;
+                            document.head.appendChild(style);
+                        }
+                        style.textContent = `
+                            .caption-window, .ytp-caption-segment, .ytm-subtitle, .ytp-caption-container, .ytp-caption-segment span {
+                                font-size: ${subtitleSize}% !important;
+                                line-height: normal !important;
+                            }
+                            video::-webkit-media-text-track-display {
+                                font-size: ${subtitleSize}% !important;
+                            }
+                        `;
+                    })();
+                """.trimIndent(), null)
+
                 if (isInPip) {
                     view.evaluateJavascript("""
                         (function() {
@@ -342,7 +366,7 @@ fun YoutubeWebView(
     }
 }
 
-private fun injectScripts(webView: WebView?, isDark: Boolean) {
+private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int) {
     val view = webView ?: return
 
     val cosmeticScript = """
@@ -394,6 +418,23 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
                 a[href^="intent://"],
                 button[onclick*="intent://"] {
                     display: none !important;
+                }
+            `;
+
+            var subStyleId = 'sb-subtitle-style';
+            var subStyle = document.getElementById(subStyleId);
+            if (!subStyle) {
+                subStyle = document.createElement('style');
+                subStyle.id = subStyleId;
+                document.head.appendChild(subStyle);
+            }
+            subStyle.textContent = `
+                .caption-window, .ytp-caption-segment, .ytm-subtitle, .ytp-caption-container, .ytp-caption-segment span {
+                    font-size: ${subtitleSize}% !important;
+                    line-height: normal !important;
+                }
+                video::-webkit-media-text-track-display {
+                    font-size: ${subtitleSize}% !important;
                 }
             `;
             
