@@ -115,6 +115,14 @@ class SponsorBlockManager(private val context: Context) {
         prefs.edit().putInt("subtitle_size", size).apply()
     }
 
+    fun getNoticeDuration(): Int {
+        return prefs.getInt("notice_duration", 5)
+    }
+
+    fun setNoticeDuration(seconds: Int) {
+        prefs.edit().putInt("notice_duration", seconds).apply()
+    }
+
     suspend fun fetchSegments(videoID: String): List<Segment> = withContext(Dispatchers.IO) {
         try {
             val hash = sha256(videoID)

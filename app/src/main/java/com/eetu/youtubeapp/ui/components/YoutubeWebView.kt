@@ -44,6 +44,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.eetu.youtubeapp.bridge.AndroidBridge
@@ -91,9 +93,11 @@ fun YoutubeWebView(
     val currentOnOpenBrowserSettings by rememberUpdatedState(onOpenBrowserSettings)
     val currentOnVideoDimensionsChanged by rememberUpdatedState(onVideoDimensionsChanged)
 
+    val noticeDuration = remember { sponsorBlockManager.getNoticeDuration() }
+
     LaunchedEffect(skipInfo) {
         if (skipInfo != null) {
-            delay(5000)
+            delay(noticeDuration * 1000L)
             skipInfo = null
         }
     }
@@ -324,43 +328,57 @@ fun YoutubeWebView(
             }
         )
 
-        AnimatedVisibility(
-            visible = skipInfo != null,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 80.dp)
-        ) {
-            skipInfo?.let { (category, startTime) ->
-                Surface(
-                    color = Color.Black.copy(alpha = 0.6f),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+        val skipOverlay: @Composable () -> Unit = {
+            AnimatedVisibility(
+                visible = skipInfo != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .padding(top = if (isFullscreen) 100.dp else 120.dp)
+            ) {
+                skipInfo?.let { (category, startTime) ->
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     ) {
-                        Text(
-                            text = "Skipped $category",
-                            color = Color.White,
-                            fontSize = 12.sp
-                        )
-                        TextButton(
-                            onClick = {
-                                webViewInstance?.evaluateJavascript(
-                                    "if(window._sb_player) { window._sb_player.currentTime = $startTime; }",
-                                    null
-                                )
-                                skipInfo = null
-                            },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF3EA6FF))
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Undo", fontSize = 12.sp)
+                            Text(
+                                text = "Skipped $category",
+                                color = Color.White,
+                                fontSize = 12.sp
+                            )
+                            TextButton(
+                                onClick = {
+                                    webViewInstance?.evaluateJavascript(
+                                        "if(window._sb_player) { window._sb_player.currentTime = $startTime; }",
+                                        null
+                                    )
+                                    skipInfo = null
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF3EA6FF))
+                            ) {
+                                Text("Undo", fontSize = 12.sp)
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        if (isFullscreen) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                properties = PopupProperties(focusable = false)
+            ) {
+                skipOverlay()
+            }
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                skipOverlay()
             }
         }
     }

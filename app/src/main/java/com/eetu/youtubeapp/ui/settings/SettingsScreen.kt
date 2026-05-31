@@ -14,11 +14,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -92,6 +94,33 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Notice duration",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            var noticeDuration by remember { mutableFloatStateOf(sponsorBlockManager.getNoticeDuration().toFloat()) }
+
+            Text(
+                text = "Show skip/highlight alerts for ${noticeDuration.toInt()} seconds",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
+            Slider(
+                value = noticeDuration,
+                onValueChange = { 
+                    noticeDuration = it
+                    sponsorBlockManager.setNoticeDuration(it.toInt())
+                },
+                valueRange = 2f..20f,
+                steps = 17,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

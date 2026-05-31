@@ -38,7 +38,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -212,6 +215,7 @@ fun PlayerScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val sponsorBlockManager = remember { com.eetu.youtubeapp.data.SponsorBlockManager(context) }
     val activity = remember(context) { context.findActivity() }
     var isFullscreen by remember { mutableStateOf(false) }
     
@@ -221,34 +225,7 @@ fun PlayerScreen(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             contentWindowInsets = if (isFullscreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
-            snackbarHost = { 
-                androidx.compose.material3.SnackbarHost(
-                    hostState = snackbarHostState,
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                ) { data ->
-                    Snackbar(
-                        modifier = Modifier.padding(12.dp),
-                        containerColor = Color.Black.copy(alpha = 0.7f),
-                        contentColor = Color.White,
-                        action = {
-                            data.visuals.actionLabel?.let { label ->
-                                TextButton(onClick = { data.performAction() }) {
-                                    Text(label, color = Color.Cyan)
-                                }
-                            }
-                        },
-                        dismissAction = {
-                            if (data.visuals.actionLabel != null) {
-                                TextButton(onClick = { data.dismiss() }) {
-                                    Text("Close", color = Color.LightGray)
-                                }
-                            }
-                        }
-                    ) {
-                        Text(data.visuals.message)
-                    }
-                }
-            }
+            snackbarHost = {}
         ) { innerPadding ->
             Box(
                 modifier = Modifier
@@ -266,14 +243,19 @@ fun PlayerScreen(
                     },
                     onHighlightDetected = { time ->
                         scope.launch {
-                            val result = snackbarHostState.showSnackbar(
-                                message = "Highlight found",
-                                actionLabel = "Jump",
-                                duration = SnackbarDuration.Short
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                jumpToTimeRequest = time
+                            val durationSeconds = sponsorBlockManager.getNoticeDuration()
+                            val snackbarJob = launch {
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Highlight found",
+                                    actionLabel = "Jump",
+                                    duration = SnackbarDuration.Indefinite
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    jumpToTimeRequest = time
+                                }
                             }
+                            delay(durationSeconds * 1000L)
+                            snackbarJob.cancel()
                         }
                     },
                     onFullscreenStateChanged = { fullscreen ->
@@ -338,6 +320,50 @@ fun PlayerScreen(
                     loadUrlRequest = externalUrl,
                     onUrlLoaded = onUrlHandled
                 )
+            }
+        }
+
+        // Show SnackbarHost in a Popup when in fullscreen, or just as a TopCenter overlay otherwise
+        val snackbarContent: @Composable () -> Unit = {
+            androidx.compose.material3.SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .padding(top = if (isFullscreen) 16.dp else 48.dp)
+            ) { data ->
+                Snackbar(
+                    modifier = Modifier.padding(12.dp),
+                    containerColor = Color.Black.copy(alpha = 0.7f),
+                    contentColor = Color.White,
+                    action = {
+                        data.visuals.actionLabel?.let { label ->
+                            TextButton(onClick = { data.performAction() }) {
+                                Text(label, color = Color.Cyan)
+                            }
+                        }
+                    },
+                    dismissAction = {
+                        if (data.visuals.actionLabel != null) {
+                            TextButton(onClick = { data.dismiss() }) {
+                                Text("Close", color = Color.LightGray)
+                            }
+                        }
+                    }
+                ) {
+                    Text(data.visuals.message)
+                }
+            }
+        }
+
+        if (isFullscreen) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                properties = PopupProperties(focusable = false)
+            ) {
+                snackbarContent()
+            }
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                snackbarContent()
             }
         }
     }
