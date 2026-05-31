@@ -260,13 +260,9 @@ fun PlayerScreen(
                 YoutubeWebView(
                     modifier = Modifier.fillMaxSize(),
                     initialUrl = initialUrl,
-                    onSkipDetected = { category ->
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                message = "Skipped $category",
-                                duration = SnackbarDuration.Short
-                            )
-                        }
+                    onSkipDetected = { category, startTime ->
+                        // The WebView now handles its own overlay for skips
+                        android.util.Log.d("MainActivity", "Skipped $category starting at $startTime")
                     },
                     onHighlightDetected = { time ->
                         scope.launch {

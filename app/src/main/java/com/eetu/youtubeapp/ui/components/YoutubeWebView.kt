@@ -17,18 +17,32 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
@@ -45,7 +59,7 @@ fun YoutubeWebView(
     modifier: Modifier = Modifier,
     initialUrl: String = "https://m.youtube.com",
     onLoadingStateChanged: (Boolean) -> Unit = {},
-    onSkipDetected: (String) -> Unit = {},
+    onSkipDetected: (String, Double) -> Unit = { _, _ -> },
     onHighlightDetected: (Double) -> Unit = {},
     onFullscreenStateChanged: (Boolean) -> Unit = {},
     onVideoDimensionsChanged: (Int, Int) -> Unit = { _, _ -> },
@@ -67,6 +81,21 @@ fun YoutubeWebView(
     var isFullscreen by remember { mutableStateOf(false) }
     var customViewRef by remember { mutableStateOf<View?>(null) }
     var customViewCallbackRef by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
+
+    var skipInfo by remember { mutableStateOf<Pair<String, Double>?>(null) }
+
+    val currentOnSkipDetected by rememberUpdatedState(onSkipDetected)
+    val currentOnHighlightDetected by rememberUpdatedState(onHighlightDetected)
+    val currentOnOpenSettings by rememberUpdatedState(onOpenSettings)
+    val currentOnOpenBrowserSettings by rememberUpdatedState(onOpenBrowserSettings)
+    val currentOnVideoDimensionsChanged by rememberUpdatedState(onVideoDimensionsChanged)
+
+    LaunchedEffect(skipInfo) {
+        if (skipInfo != null) {
+            delay(5000)
+            skipInfo = null
+        }
+    }
 
     // Handle Back Button for WebView or Fullscreen
     if (isFullscreen) {
@@ -130,7 +159,15 @@ fun YoutubeWebView(
                         }
                     }
 
-                    val bridge = AndroidBridge(ctx, this, onSkipDetected, onHighlightDetected, onOpenSettings, onOpenBrowserSettings, onVideoDimensionsChanged)
+                    val bridge = AndroidBridge(ctx, this, { category, startTime ->
+                        post {
+                            skipInfo = category to startTime
+                            currentOnSkipDetected(category, startTime)
+                        }
+                    }, { currentOnHighlightDetected(it) }, 
+                    { currentOnOpenSettings() }, 
+                    { currentOnOpenBrowserSettings() }, 
+                    { w, h -> currentOnVideoDimensionsChanged(w, h) })
                     addJavascriptInterface(bridge, "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {
@@ -262,6 +299,46 @@ fun YoutubeWebView(
                 }
             }
         )
+
+        AnimatedVisibility(
+            visible = skipInfo != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp)
+        ) {
+            skipInfo?.let { (category, startTime) ->
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Skipped $category",
+                            color = Color.White,
+                            fontSize = 12.sp
+                        )
+                        TextButton(
+                            onClick = {
+                                webViewInstance?.evaluateJavascript(
+                                    "if(window._sb_player) { window._sb_player.currentTime = $startTime; }",
+                                    null
+                                )
+                                skipInfo = null
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF3EA6FF))
+                        ) {
+                            Text("Undo", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -484,7 +561,7 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
                     .sb-segment {
                         position: absolute;
                         height: 100%;
-                        opacity: 0.7;
+                        opacity: 0.9;
                         pointer-events: none;
                         top: 0;
                     }
@@ -513,33 +590,37 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
                     if (!previewBar) {
                         previewBar = document.createElement('ul');
                         previewBar.id = 'previewbar';
-                        previewBar.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;list-style:none;padding:0;margin:0;';
+                        previewBar.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;list-style:none;padding:0;margin:0;';
                         progressBar.appendChild(previewBar);
                     }
 
-                    const renderKey = (segments ? segments.length : 0) + '_' + Math.floor(video.duration);
+                    const renderKey = (segments ? segments.length : 0) + '_' + (video.duration ? Math.floor(video.duration) : 0);
                     if (previewBar.dataset.renderKey === renderKey) return;
                     previewBar.dataset.renderKey = renderKey;
 
                     clearElement(previewBar);
                     if (!segments || segments.length === 0) return;
 
-                    segments.forEach(seg => {
-                        const startPercent = (seg.start / video.duration) * 100;
-                        const endPercent = (seg.end / video.duration) * 100;
-                        const rightPercent = 100 - endPercent;
+                    segments.forEach(function(seg) {
+                        var start = (seg.start / video.duration) * 100;
+                        var end = (seg.end / video.duration) * 100;
+                        
+                        // Highlights are often points, ensure they are visible (at least 1.5% of the bar)
+                        if (seg.category === 'poi_highlight' && (end - start) < 1.5) {
+                            end = start + 1.5;
+                        }
+                        
+                        var right = 100 - end;
+                        if (start > 100) return;
 
-                        if (startPercent > 100) return;
-
-                        const li = document.createElement('li');
-                        li.className = 'previewbar';
+                        var li = document.createElement('li');
+                        li.className = 'previewbar sb-segment';
                         li.setAttribute('sponsorblock-category', seg.category);
                         li.style.position = 'absolute';
                         li.style.height = '100%';
-                        li.style.left = startPercent + '%';
-                        li.style.right = rightPercent + '%';
+                        li.style.left = start + '%';
+                        li.style.right = right + '%';
                         li.style.backgroundColor = 'var(--sb-category-' + seg.category + ', #888)';
-                        li.style.opacity = '0.7';
                         li.textContent = '\u00A0'; 
                         previewBar.appendChild(li);
                     });

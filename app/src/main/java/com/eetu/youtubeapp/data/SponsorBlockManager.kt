@@ -20,6 +20,17 @@ import java.util.Locale
 class SponsorBlockManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("sb_manager_prefs", Context.MODE_PRIVATE)
     private val scriptFile = File(context.filesDir, "sb_latest.js")
+    
+    init {
+        // Ensure we have a userID as per SB requirements
+        if (prefs.getString("userID", null) == null) {
+            val allowedChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            val randomId = (1..32)
+                .map { allowedChars.random() }
+                .joinToString("")
+            prefs.edit().putString("userID", randomId).apply()
+        }
+    }
 
     private val moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
@@ -30,8 +41,9 @@ class SponsorBlockManager(private val context: Context) {
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header("User-Agent", getUserAgent().ifEmpty { 
-                        "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
                     })
+                    .header("Accept", "application/json")
                     .build()
                 chain.proceed(request)
             }
@@ -99,7 +111,11 @@ class SponsorBlockManager(private val context: Context) {
         try {
             val hash = sha256(videoID)
             val prefix = hash.substring(0, 4)
-            val response = apiService.getSkipSegments(prefix)
+            val userID = prefs.getString("userID", "") ?: ""
+            val categories = listOf("sponsor", "selfpromo", "interaction", "intro", "outro", "preview", "music_offtopic", "poi_highlight")
+            val actionTypes = listOf("skip", "poi")
+            
+            val response = apiService.getSkipSegments(prefix, categories, actionTypes, "YouTube", userID)
             
             if (response.isSuccessful) {
                 val results = response.body() ?: emptyList()
@@ -109,7 +125,8 @@ class SponsorBlockManager(private val context: Context) {
                 android.util.Log.d("SponsorBlockManager", "Found ${segments.size} segments for videoID $videoID: $segments")
                 segments
             } else {
-                android.util.Log.e("SponsorBlockManager", "Failed to fetch segments: ${response.code()}")
+                val errorBody = response.errorBody()?.string()
+                android.util.Log.e("SponsorBlockManager", "Failed to fetch segments: ${response.code()} - $errorBody")
                 emptyList()
             }
         } catch (e: Exception) {

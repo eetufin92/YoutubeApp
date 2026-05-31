@@ -16,6 +16,9 @@ interface SponsorBlockApiService {
     @GET("api/skipSegments/{prefix}")
     suspend fun getSkipSegments(
         @Path("prefix") prefix: String,
-        @Query("categories") categories: String = "[\"sponsor\",\"selfpromo\",\"interaction\",\"intro\",\"outro\",\"preview\",\"music_offtopic\",\"poi_highlight\"]"
+        @Query("category") categories: List<String>,
+        @Query("actionType") actionTypes: List<String>,
+        @Query("service") service: String = "YouTube",
+        @Query("userID") userID: String
     ): Response<List<VideoSegmentsResponse>>
 }

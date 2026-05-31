@@ -15,7 +15,7 @@ import org.json.JSONObject
 class AndroidBridge(
     private val context: Context,
     private val webView: WebView,
-    private val onSkipDetected: (String) -> Unit = {},
+    private val onSkipDetected: (String, Double) -> Unit = { _, _ -> },
     private val onHighlightDetected: (Double) -> Unit = {},
     private val onOpenSettings: () -> Unit = {},
     private val onOpenBrowserSettings: () -> Unit = {},
@@ -174,7 +174,7 @@ class AndroidBridge(
         if (segmentToSkip != null) {
             Log.d("AndroidBridge", "Auto-skipping segment: ${segmentToSkip.category} (${segmentToSkip.start} - ${segmentToSkip.end})")
             lastSkippedUuid = segmentToSkip.uuid
-            onSkipDetected(segmentToSkip.category)
+            onSkipDetected(segmentToSkip.category, segmentToSkip.start)
             skipTo(segmentToSkip.end)
         }
         
