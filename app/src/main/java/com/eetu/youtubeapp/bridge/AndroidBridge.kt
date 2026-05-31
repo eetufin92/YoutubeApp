@@ -26,6 +26,7 @@ class AndroidBridge(
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     
     private var currentVideoId: String? = null
+    @Volatile
     private var segments: List<Segment> = emptyList()
     private var lastSkippedUuid: String? = null
     private val shownHighlights = mutableSetOf<String>()
@@ -121,9 +122,9 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun onVideoIdChanged(videoId: String) {
-        Log.d("AndroidBridge", "onVideoIdChanged called with: $videoId")
-        if (videoId == currentVideoId) {
-            Log.d("AndroidBridge", "Video ID is the same, ignoring.")
+        Log.d("AndroidBridge", "onVideoIdChanged: $videoId (current: $currentVideoId)")
+        if (videoId == currentVideoId && segments.isNotEmpty()) {
+            pushSegmentsToJs()
             return
         }
         currentVideoId = videoId
@@ -138,15 +139,33 @@ class AndroidBridge(
         scope.launch {
             segments = sponsorBlockManager.fetchSegments(videoId)
             Log.d("AndroidBridge", "Fetched ${segments.size} segments for $videoId")
+            pushSegmentsToJs()
+        }
+    }
+
+    private fun pushSegmentsToJs() {
+        val currentSegments = segments
+        val segmentsJson = org.json.JSONArray()
+        // Only include segments the user wants to see/skip
+        currentSegments.filter { sponsorBlockManager.shouldSkip(it.category) || it.category == "poi_highlight" }.forEach { segment ->
+            val obj = org.json.JSONObject()
+            obj.put("start", segment.start)
+            obj.put("end", segment.end)
+            obj.put("category", segment.category)
+            segmentsJson.put(obj)
+        }
+        webView.post {
+            webView.evaluateJavascript("if(window.setSegments) { window.setSegments($segmentsJson); }", null)
         }
     }
 
     @JavascriptInterface
     fun onTimeUpdate(currentTime: Double) {
-        if (segments.isEmpty()) return
+        val currentSegments = segments
+        if (currentSegments.isEmpty()) return
 
         // Auto-skip logic
-        val segmentToSkip = segments.find { segment ->
+        val segmentToSkip = currentSegments.find { segment ->
             currentTime >= segment.start && currentTime < segment.end &&
                     sponsorBlockManager.shouldSkip(segment.category) &&
                     segment.uuid != lastSkippedUuid
@@ -160,7 +179,7 @@ class AndroidBridge(
         }
         
         // Highlight logic
-        segments.filter { it.category == "poi_highlight" }.forEach { highlight ->
+        currentSegments.filter { it.category == "poi_highlight" }.forEach { highlight ->
             if (!shownHighlights.contains(highlight.uuid)) {
                 // Show if we are within 60 seconds of the highlight, or in the first 15 seconds of the video
                 if (currentTime < highlight.start && (currentTime > highlight.start - 60 || currentTime < 15)) {

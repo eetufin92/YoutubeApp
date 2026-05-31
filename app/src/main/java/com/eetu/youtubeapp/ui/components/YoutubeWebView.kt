@@ -451,6 +451,95 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
                 }
             }, true);
             
+            function clearElement(el) {
+                while (el.firstChild) {
+                    el.removeChild(el.firstChild);
+                }
+            }
+
+            function injectSponsorBlockStyles() {
+                const styleId = 'sb-colors-style';
+                if (document.getElementById(styleId)) return;
+                const style = document.createElement('style');
+                style.id = styleId;
+                style.textContent = `
+                    :root {
+                        --sb-category-sponsor: #00d400;
+                        --sb-category-selfpromo: #ffff00;
+                        --sb-category-interaction: #cc00ff;
+                        --sb-category-intro: #00ffff;
+                        --sb-category-outro: #0202ed;
+                        --sb-category-preview: #008fd6;
+                        --sb-category-music_offtopic: #ff9900;
+                        --sb-category-poi_highlight: #ff16b0;
+                    }
+                    .sb-segment {
+                        position: absolute;
+                        height: 100%;
+                        opacity: 0.7;
+                        pointer-events: none;
+                        top: 0;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            window.setSegments = function(segments) {
+                window._sb_segments = segments;
+                renderSegments();
+            };
+
+            function renderSegments() {
+                try {
+                    const segments = window._sb_segments;
+                    const video = document.querySelector('video');
+                    if (!video || !video.duration || isNaN(video.duration)) return;
+
+                    const progressBar = document.querySelector('yt-chaptered-progress-bar-line') ||
+                                        document.querySelector('.ytm-progress-bar-line') ||
+                                        document.querySelector('ytm-progress-bar');
+                    
+                    if (!progressBar) return;
+
+                    let previewBar = progressBar.querySelector('#previewbar');
+                    if (!previewBar) {
+                        previewBar = document.createElement('ul');
+                        previewBar.id = 'previewbar';
+                        previewBar.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;list-style:none;padding:0;margin:0;';
+                        progressBar.appendChild(previewBar);
+                    }
+
+                    const renderKey = (segments ? segments.length : 0) + '_' + Math.floor(video.duration);
+                    if (previewBar.dataset.renderKey === renderKey) return;
+                    previewBar.dataset.renderKey = renderKey;
+
+                    clearElement(previewBar);
+                    if (!segments || segments.length === 0) return;
+
+                    segments.forEach(seg => {
+                        const startPercent = (seg.start / video.duration) * 100;
+                        const endPercent = (seg.end / video.duration) * 100;
+                        const rightPercent = 100 - endPercent;
+
+                        if (startPercent > 100) return;
+
+                        const li = document.createElement('li');
+                        li.className = 'previewbar';
+                        li.setAttribute('sponsorblock-category', seg.category);
+                        li.style.position = 'absolute';
+                        li.style.height = '100%';
+                        li.style.left = startPercent + '%';
+                        li.style.right = rightPercent + '%';
+                        li.style.backgroundColor = 'var(--sb-category-' + seg.category + ', #888)';
+                        li.style.opacity = '0.7';
+                        li.textContent = '\u00A0'; 
+                        previewBar.appendChild(li);
+                    });
+                } catch (e) {
+                    console.error('SponsorBlock render error:', e);
+                }
+            }
+
             function getInfo() {
                 const video = document.querySelector('video');
                 const urlParams = new URLSearchParams(window.location.search);
@@ -482,17 +571,23 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
             let lastVideoId = null;
             
             setInterval(() => {
-                const { video, videoId, isAd } = getInfo();
-                window._sb_player = video;
-                
-                if (videoId && videoId !== lastVideoId && !isAd) {
-                    lastVideoId = videoId;
-                    AndroidBridge.onVideoIdChanged(videoId);
-                }
-                
-                if (video && !video.paused && !isAd) {
-                    if (window._sb_debug) console.log('SponsorBlock: timeUpdate ' + video.currentTime);
-                    AndroidBridge.onTimeUpdate(video.currentTime);
+                try {
+                    const { video, videoId, isAd } = getInfo();
+                    window._sb_player = video;
+                    
+                    if (videoId && videoId !== lastVideoId && !isAd) {
+                        lastVideoId = videoId;
+                        AndroidBridge.onVideoIdChanged(videoId);
+                    }
+                    
+                    if (video && !video.paused && !isAd) {
+                        if (window._sb_debug) console.log('SponsorBlock: timeUpdate ' + video.currentTime);
+                        AndroidBridge.onTimeUpdate(video.currentTime);
+                    }
+                    injectSponsorBlockStyles();
+                    renderSegments();
+                } catch (e) {
+                    console.error('SponsorBlock interval error:', e);
                 }
             }, 1000);
             window._sb_debug = true;
