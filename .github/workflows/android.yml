@@ -26,22 +26,35 @@ jobs:
     - name: Build with Gradle
       run: ./gradlew assembleRelease
 
-    # To sign your APK, you would use an action like r0adkll/sign-android-release
-    # This requires setting up secrets in your GitHub repository:
-    # SIGNING_KEY, ALIAS, KEY_STORE_PASSWORD, KEY_PASSWORD
-    #
-    # - name: Sign APK
-    #   uses: r0adkll/sign-android-release@v1
-    #   id: sign_app
-    #   with:
-    #     releaseDirectory: app/build/outputs/apk/release
-    #     signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-    #     alias: ${{ secrets.ALIAS }}
-    #     keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-    #     keyPassword: ${{ secrets.KEY_PASSWORD }}
+    - name: Sign APK
+      if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE }}
+      run: |
+        if [ -z "$KEYSTORE_BASE64" ]; then
+          echo "KEYSTORE secret is missing. Skipping signing."
+          exit 0
+        fi
+        echo "$KEYSTORE_BASE64" | base64 --decode > release.jks
+        
+        # Find the latest apksigner in the Android SDK
+        APKSIGNER=$(find $ANDROID_SDK_ROOT/build-tools -name apksigner | sort -r | head -n 1)
+        
+        # Find the unsigned APK
+        UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+        
+        $APKSIGNER sign --ks release.jks \
+          --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+          --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+          --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+          --out app/build/outputs/apk/release/app-release-signed.apk \
+          $UNSIGNED_APK
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app-release
-        path: app/build/outputs/apk/release/*.apk
+        path: |
+          app/build/outputs/apk/release/app-release-signed.apk
+          app/build/outputs/apk/release/*-unsigned.apk
+          app/build/outputs/apk/release/app-release.apk
