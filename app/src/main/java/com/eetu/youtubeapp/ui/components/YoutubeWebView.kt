@@ -636,14 +636,20 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
             function renderSegments() {
                 try {
                     const segments = window._sb_segments;
+
                     const video = document.querySelector('video');
                     if (!video || !video.duration || isNaN(video.duration)) return;
 
-                    const progressBar = document.querySelector('yt-chaptered-progress-bar-line') ||
-                                        document.querySelector('.ytm-progress-bar-line') ||
-                                        document.querySelector('ytm-progress-bar');
+                   const progressBar = document.querySelector('yt-chaptered-progress-bar-line') ||
+                                       document.querySelector('yt-progress-bar-line') ||
+                                       document.querySelector('.ytProgressBarLineHost') ||
+                                       document.querySelector('.ytm-progress-bar-line') ||
+                                       document.querySelector('ytm-progress-bar');
                     
-                    if (!progressBar) return;
+                    if (!progressBar) {
+                        console.log("No progressbar for segments found");
+                        return;
+                    }
 
                     let previewBar = progressBar.querySelector('#previewbar');
                     if (!previewBar) {
@@ -658,14 +664,21 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
                     previewBar.dataset.renderKey = renderKey;
 
                     clearElement(previewBar);
-                    if (!segments || segments.length === 0) return;
+                    if (!segments || segments.length === 0) {
+                        console.log("segments not found");
+                        return;
+                    }
 
                     segments.forEach(function(seg) {
+                        console.log("segment", JSON.stringify(seg));
+
+
                         var start = (seg.start / video.duration) * 100;
                         var end = (seg.end / video.duration) * 100;
                         
                         // Highlights are often points, ensure they are visible (at least 1.5% of the bar)
                         if (seg.category === 'poi_highlight' && (end - start) < 1.5) {
+                            console.log("Adjusting poi_highlight duration");
                             end = start + 1.5;
                         }
                         
