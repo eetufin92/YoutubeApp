@@ -199,6 +199,21 @@ class AndroidBridge(
         skipTo(seconds)
     }
 
+    @JavascriptInterface
+    fun share(url: String) {
+        Log.d("AndroidBridge", "share called with: $url")
+        webView.post {
+            val sendIntent = android.content.Intent().apply {
+                action = android.content.Intent.ACTION_SEND
+                putExtra(android.content.Intent.EXTRA_TEXT, url)
+                type = "text/plain"
+            }
+            val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+            shareIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(shareIntent)
+        }
+    }
+
     private fun skipTo(seconds: Double) {
         webView.post {
             webView.evaluateJavascript("if(window._sb_player) { window._sb_player.currentTime = $seconds; }", null)

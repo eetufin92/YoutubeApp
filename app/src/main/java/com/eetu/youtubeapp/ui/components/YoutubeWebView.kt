@@ -214,27 +214,23 @@ fun YoutubeWebView(
 
                     setOnLongClickListener {
                         val result = hitTestResult
-                        val url = result.extra
-                        if (url != null && (result.type == WebView.HitTestResult.SRC_ANCHOR_TYPE || 
-                                           result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
-                            AlertDialog.Builder(ctx)
-                                .setTitle(url)
-                                .setItems(arrayOf("Open", "Share", "Cancel")) { dialog, which ->
-                                    when (which) {
-                                        0 -> loadUrl(url)
-                                        1 -> {
-                                            val sendIntent = Intent().apply {
-                                                action = Intent.ACTION_SEND
-                                                putExtra(Intent.EXTRA_TEXT, url)
-                                                type = "text/plain"
-                                            }
-                                            val shareIntent = Intent.createChooser(sendIntent, null)
-                                            ctx.startActivity(shareIntent)
-                                        }
-                                        2 -> dialog.dismiss()
-                                    }
+                        val type = result.type
+                        val extra = result.extra
+
+                        if (extra != null && (type == WebView.HitTestResult.SRC_ANCHOR_TYPE || 
+                                           type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+                            val handler = @SuppressLint("HandlerLeak") object : android.os.Handler(android.os.Looper.getMainLooper()) {
+                                override fun handleMessage(msg: android.os.Message) {
+                                    val url = msg.data.getString("url")
+                                    val finalUrl = if (!url.isNullOrEmpty()) url else extra
+                                    showLongPressDialog(ctx, this@apply, finalUrl)
                                 }
-                                .show()
+                            }
+                            val msg = handler.obtainMessage()
+                            requestFocusNodeHref(msg)
+                            true
+                        } else if (extra != null && type == WebView.HitTestResult.IMAGE_TYPE) {
+                            showLongPressDialog(ctx, this@apply, extra)
                             true
                         } else {
                             false
@@ -435,6 +431,18 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
             menuObserver.observe(document.body, { childList: true, subtree: true });
             injectSettingsButton();
 
+            function interceptShare() {
+                document.addEventListener('click', (e) => {
+                    const shareButton = e.target.closest('button[aria-label*="Share"], button[aria-label*="Jaa"], .ytm-share-button, .share-panel-service-button, .yt-spec-button-shape-next[aria-label*="Share"], .yt-spec-button-shape-next[aria-label*="Jaa"]');
+                    if (shareButton) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        AndroidBridge.share(window.location.href);
+                    }
+                }, true);
+            }
+            interceptShare();
+
             function removeIntentLinks() {
                 document.querySelectorAll('a[href^="intent://"], [onclick*="intent://"]').forEach(el => {
                     el.style.display = 'none';
@@ -595,6 +603,28 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
     """.trimIndent()
 
     view.evaluateJavascript(observerScript, null)
+}
+
+private fun showLongPressDialog(context: Context, webView: WebView, url: String) {
+    AlertDialog.Builder(context)
+        .setTitle(url)
+        .setItems(arrayOf("Open", "Share", "Cancel")) { dialog, which ->
+            when (which) {
+                0 -> webView.loadUrl(url)
+                1 -> {
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, url)
+                        type = "text/plain"
+                    }
+                    val shareIntent = Intent.createChooser(sendIntent, null)
+                    shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(shareIntent)
+                }
+                2 -> dialog.dismiss()
+            }
+        }
+        .show()
 }
 
 private fun Context.findActivity(): Activity? {
