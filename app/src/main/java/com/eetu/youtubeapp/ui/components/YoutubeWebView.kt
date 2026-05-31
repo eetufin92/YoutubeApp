@@ -4,8 +4,12 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -60,11 +64,16 @@ fun YoutubeWebView(
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
 
-    var customView by remember { mutableStateOf<View?>(null) }
-    var customViewCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    var customViewRef by remember { mutableStateOf<View?>(null) }
+    var customViewCallbackRef by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
 
-    // Handle Back Button for WebView
-    if (customView == null && canGoBack) {
+    // Handle Back Button for WebView or Fullscreen
+    if (isFullscreen) {
+        BackHandler {
+            customViewCallbackRef?.onCustomViewHidden()
+        }
+    } else if (canGoBack) {
         BackHandler {
             webViewInstance?.goBack()
         }
@@ -161,28 +170,44 @@ fun YoutubeWebView(
 
                     webChromeClient = object : WebChromeClient() {
                         override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                            if (customView != null) {
+                            if (customViewRef != null) {
                                 callback?.onCustomViewHidden()
                                 return
                             }
                             
+                            val activity = ctx.findActivity()
+                            val contentFrame = activity?.findViewById<FrameLayout>(android.R.id.content)
+                            
                             view?.apply {
                                 setBackgroundColor(android.graphics.Color.BLACK)
                                 // Force layout params to match parent to avoid sizing issues during transition
-                                layoutParams = ViewGroup.LayoutParams(
+                                layoutParams = FrameLayout.LayoutParams(
                                     ViewGroup.LayoutParams.MATCH_PARENT,
                                     ViewGroup.LayoutParams.MATCH_PARENT
                                 )
                             }
                             
-                            customView = view
-                            customViewCallback = callback
+                            contentFrame?.addView(view)
+                            view?.requestFocus()
+                            
+                            customViewRef = view
+                            customViewCallbackRef = callback
+                            isFullscreen = true
                             onFullscreenStateChanged(true)
                         }
 
                         override fun onHideCustomView() {
-                            customView = null
-                            customViewCallback = null
+                            val activity = ctx.findActivity()
+                            val contentFrame = activity?.findViewById<FrameLayout>(android.R.id.content)
+                            
+                            customViewRef?.let { view ->
+                                contentFrame?.removeView(view)
+                            }
+                            
+                            customViewRef = null
+                            customViewCallbackRef?.onCustomViewHidden()
+                            customViewCallbackRef = null
+                            isFullscreen = false
                             onFullscreenStateChanged(false)
                         }
                     }
@@ -241,21 +266,6 @@ fun YoutubeWebView(
                 }
             }
         )
-
-        if (customView != null) {
-            BackHandler {
-                customViewCallback?.onCustomViewHidden()
-            }
-            
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { _ ->
-                        customView!!
-                    }
-                )
-            }
-        }
     }
 }
 
@@ -490,4 +500,13 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
     """.trimIndent()
 
     view.evaluateJavascript(observerScript, null)
+}
+
+private fun Context.findActivity(): Activity? {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
 }
