@@ -583,21 +583,38 @@ private fun injectScripts(webView: WebView?, isDark: Boolean) {
                     const { video, videoId, isAd } = getInfo();
                     window._sb_player = video;
                     
-                    if (videoId && videoId !== lastVideoId && !isAd) {
+                    // Fetch segments as soon as we have a videoId, even if an ad is playing.
+                    // This allows pre-fetching while the ad is showing.
+                    if (videoId && videoId !== lastVideoId) {
                         lastVideoId = videoId;
                         AndroidBridge.onVideoIdChanged(videoId);
                     }
                     
+                    // Only process time updates and rendering if not in an ad.
                     if (video && !video.paused && !isAd) {
-                        if (window._sb_debug) console.log('SponsorBlock: timeUpdate ' + video.currentTime);
                         AndroidBridge.onTimeUpdate(video.currentTime);
                     }
-                    injectSponsorBlockStyles();
-                    renderSegments();
+
+                    if (!isAd) {
+                        injectSponsorBlockStyles();
+                        renderSegments();
+                    } else {
+                        // Clear segments if an ad is showing to avoid rendering them on the ad's progress bar.
+                        const progressBar = document.querySelector('yt-chaptered-progress-bar-line') ||
+                                            document.querySelector('.ytm-progress-bar-line') ||
+                                            document.querySelector('ytm-progress-bar');
+                        if (progressBar) {
+                            const previewBar = progressBar.querySelector('#previewbar');
+                            if (previewBar) {
+                                previewBar.innerHTML = '';
+                                delete previewBar.dataset.renderKey;
+                            }
+                        }
+                    }
                 } catch (e) {
                     console.error('SponsorBlock interval error:', e);
                 }
-            }, 1000);
+            }, 250); // Increased frequency to 250ms for snappier skipping and loading.
             window._sb_debug = true;
         })();
     """.trimIndent()
