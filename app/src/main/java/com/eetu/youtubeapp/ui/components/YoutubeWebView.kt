@@ -24,6 +24,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -93,10 +96,14 @@ fun YoutubeWebView(
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var currentUrl by remember { mutableStateOf(initialUrl) }
+    var scrollY by remember { mutableStateOf(0) }
 
     val isHomePage = remember(currentUrl) {
         val uri = android.net.Uri.parse(currentUrl)
-        uri.host?.contains("youtube.com") == true && (uri.path == "/" || uri.path.isNullOrEmpty() || uri.path == "/index")
+        val isYoutube = uri.host?.contains("youtube.com") == true
+        val isNotVideo = uri.getQueryParameter("v") == null
+        val isHomePath = uri.path == "/" || uri.path.isNullOrEmpty() || uri.path == "/index"
+        isYoutube && isNotVideo && isHomePath
     }
 
     val mediaSession = remember {
@@ -231,7 +238,8 @@ fun YoutubeWebView(
                             .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
                             .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
                             .build())
-                    })
+                    },
+                    { y -> scrollY = y })
                     addJavascriptInterface(bridge, "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {
@@ -425,14 +433,17 @@ fun YoutubeWebView(
             }
         )
 
-        if (isHomePage && !isFullscreen) {
+        AnimatedVisibility(
+            visible = isHomePage && !isFullscreen && scrollY < 50,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 72.dp, end = 16.dp)
+        ) {
             var showMenu by remember { mutableStateOf(false) }
             
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 72.dp, end = 16.dp)
-            ) {
+            Box {
                 FloatingActionButton(
                     onClick = { showMenu = true },
                     containerColor = Color.Red,
@@ -667,6 +678,10 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
             window.addEventListener('blur', blockVisibility, true);
             document.hasFocus = function() { return true; };
             
+            window.addEventListener('scroll', () => {
+                AndroidBridge.onScroll(window.scrollY);
+            }, { passive: true });
+
             // IntersectionObserver spoofing to keep video "visible"
             const NativeObserver = window.IntersectionObserver;
             window.IntersectionObserver = class extends NativeObserver {
