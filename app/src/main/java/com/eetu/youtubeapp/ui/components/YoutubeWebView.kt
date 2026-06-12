@@ -511,6 +511,12 @@ fun YoutubeWebView(
                             ) {
                                 Text("Undo", fontSize = 12.sp)
                             }
+                            TextButton(
+                                onClick = { skipInfo = null },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = 0.6f))
+                            ) {
+                                Text("Close", fontSize = 12.sp)
+                            }
                         }
                     }
                 }
