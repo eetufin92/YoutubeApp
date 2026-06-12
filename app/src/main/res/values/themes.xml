@@ -1,4 +1,8 @@
 <resources>
-
-    <style name="Theme.YoutubeApp" parent="Theme.MaterialComponents.Light" />
+    <style name="Theme.YoutubeApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">#ffffff</item>
+        <item name="android:statusBarColor">#ffffff</item>
+        <item name="android:navigationBarColor">#ffffff</item>
+        <item name="android:windowSplashScreenBackground" xmlns:tools="http://schemas.android.com/tools" tools:targetApi="31">#ffffff</item>
+    </style>
 </resources>

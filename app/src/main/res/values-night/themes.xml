@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.YoutubeApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">#0f0f0f</item>
+        <item name="android:statusBarColor">#0f0f0f</item>
+        <item name="android:navigationBarColor">#0f0f0f</item>
+        <item name="android:windowSplashScreenBackground" xmlns:tools="http://schemas.android.com/tools" tools:targetApi="31">#0f0f0f</item>
+    </style>
+</resources>

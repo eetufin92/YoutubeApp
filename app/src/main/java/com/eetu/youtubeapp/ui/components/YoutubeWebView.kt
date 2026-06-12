@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -120,6 +121,7 @@ fun YoutubeWebView(
             factory = { ctx ->
                 WebView(ctx).apply {
                     webViewInstance = this
+                    setBackgroundColor(if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -208,6 +210,41 @@ fun YoutubeWebView(
                         override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                             return true
                         }
+
+                        override fun onReceivedError(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                            error: WebResourceError?
+                        ) {
+                            super.onReceivedError(view, request, error)
+                            if (request?.isForMainFrame == true) {
+                                val failingUrl = request.url?.toString()
+                                view?.loadDataWithBaseURL(
+                                    failingUrl,
+                                    getErrorHtml(isDark, error?.description?.toString()),
+                                    "text/html",
+                                    "UTF-8",
+                                    failingUrl
+                                )
+                            }
+                        }
+
+                        @Suppress("DEPRECATION")
+                        override fun onReceivedError(
+                            view: WebView?,
+                            errorCode: Int,
+                            description: String?,
+                            failingUrl: String?
+                        ) {
+                            super.onReceivedError(view, errorCode, description, failingUrl)
+                            view?.loadDataWithBaseURL(
+                                failingUrl,
+                                getErrorHtml(isDark, description),
+                                "text/html",
+                                "UTF-8",
+                                failingUrl
+                            )
+                        }
                     }
 
                     webChromeClient = object : WebChromeClient() {
@@ -283,6 +320,7 @@ fun YoutubeWebView(
                 }
             },
             update = { view ->
+                view.setBackgroundColor(if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                 if (jumpToTimeRequest != null) {
                     view.evaluateJavascript("if(window._sb_player) { window._sb_player.currentTime = $jumpToTimeRequest; }", null)
                     onJumpToTimeHandled()
@@ -795,6 +833,92 @@ private fun showLongPressDialog(context: Context, webView: WebView, url: String)
             }
         }
         .show()
+}
+
+private fun getErrorHtml(isDark: Boolean, description: String?): String {
+    val bgColor = if (isDark) "#0f0f0f" else "#ffffff"
+    val textColor = if (isDark) "#ffffff" else "#000000"
+    val secondaryColor = if (isDark) "#aaaaaa" else "#606060"
+    val buttonBg = if (isDark) "#3ea6ff" else "#065fd4"
+    val buttonText = if (isDark) "#000000" else "#ffffff"
+
+    return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <style>
+                body {
+                    background-color: $bgColor;
+                    color: $textColor;
+                    font-family: "Roboto", "Arial", sans-serif;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    margin: 0;
+                    padding: 24px;
+                    text-align: center;
+                    box-sizing: border-box;
+                }
+                .error-icon {
+                    width: 120px;
+                    height: 120px;
+                    margin-bottom: 24px;
+                    opacity: 0.8;
+                }
+                h1 {
+                    font-size: 18px;
+                    font-weight: 500;
+                    margin: 0 0 12px 0;
+                }
+                p {
+                    font-size: 14px;
+                    color: $secondaryColor;
+                    line-height: 20px;
+                    margin: 0 0 32px 0;
+                    max-width: 280px;
+                }
+                button {
+                    background-color: $buttonBg;
+                    color: $buttonText;
+                    border: none;
+                    padding: 0 16px;
+                    height: 36px;
+                    border-radius: 18px;
+                    font-weight: 500;
+                    font-size: 14px;
+                    cursor: pointer;
+                    text-transform: uppercase;
+                }
+                button:disabled {
+                    opacity: 0.5;
+                    cursor: default;
+                }
+            </style>
+        </head>
+        <body>
+            <svg class="error-icon" viewBox="0 0 24 24" fill="$secondaryColor">
+                <path d="M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10,10-4.48,10-10S17.52,2,12,2z M13,17h-2v-2h2V17z M13,13h-2V7h2V13z"/>
+            </svg>
+            <h1>Webpage not available</h1>
+            <p>${description ?: "Check your network connection and try again."}</p>
+            <button id="retryBtn" onclick="retry()">Retry</button>
+            <script>
+                function retry() {
+                    const btn = document.getElementById('retryBtn');
+                    btn.innerText = 'Retrying...';
+                    btn.disabled = true;
+                    // Small delay to show the state change before reloading
+                    setTimeout(() => {
+                        location.reload();
+                    }, 500);
+                }
+            </script>
+        </body>
+        </html>
+    """.trimIndent()
 }
 
 private fun Context.findActivity(): Activity? {
