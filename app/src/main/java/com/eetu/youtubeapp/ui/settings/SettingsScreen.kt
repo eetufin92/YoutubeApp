@@ -117,8 +117,8 @@ fun SettingsScreen(
                     noticeDuration = it
                     sponsorBlockManager.setNoticeDuration(it.toInt())
                 },
-                valueRange = 2f..20f,
-                steps = 17,
+                valueRange = 1f..20f,
+                steps = 18,
                 modifier = Modifier.fillMaxWidth()
             )
         }

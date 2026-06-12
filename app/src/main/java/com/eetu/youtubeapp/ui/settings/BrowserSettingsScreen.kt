@@ -77,6 +77,7 @@ fun BrowserSettingsScreen(
                 maxLines = 4
             )
 
+            Spacer(modifier = Modifier.height(32.dp))
 
             Text(
                 text = "Video Subtitle Size: ${subtitleSize.toInt()}%",
