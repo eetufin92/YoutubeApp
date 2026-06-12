@@ -19,7 +19,9 @@ class AndroidBridge(
     private val onHighlightDetected: (Double) -> Unit = {},
     private val onOpenSettings: () -> Unit = {},
     private val onOpenBrowserSettings: () -> Unit = {},
-    private val onVideoDimensionsChanged: (Int, Int) -> Unit = { _, _ -> }
+    private val onVideoDimensionsChanged: (Int, Int) -> Unit = { _, _ -> },
+    private val onMetadataChanged: (String, String) -> Unit = { _, _ -> },
+    private val onPlaybackStateChanged: (Boolean) -> Unit = {}
 ) {
     private val prefs = context.getSharedPreferences("sponsorblock_prefs", Context.MODE_PRIVATE)
     private val sponsorBlockManager = SponsorBlockManager(context)
@@ -197,6 +199,20 @@ class AndroidBridge(
     fun jumpToTime(seconds: Double) {
         Log.d("AndroidBridge", "jumpToTime called with: $seconds")
         skipTo(seconds)
+    }
+
+    @JavascriptInterface
+    fun updateMetadata(title: String, artist: String) {
+        webView.post {
+            onMetadataChanged(title, artist)
+        }
+    }
+
+    @JavascriptInterface
+    fun updatePlaybackState(isPlaying: Boolean) {
+        webView.post {
+            onPlaybackStateChanged(isPlaying)
+        }
     }
 
     @JavascriptInterface

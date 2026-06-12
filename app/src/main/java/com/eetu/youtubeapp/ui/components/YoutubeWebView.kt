@@ -7,6 +7,9 @@ import android.graphics.Bitmap
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.media.MediaMetadata
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -82,6 +85,33 @@ fun YoutubeWebView(
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
 
+    val mediaSession = remember {
+        MediaSession(context, "YoutubeApp").apply {
+            setCallback(object : MediaSession.Callback() {
+                override fun onPlay() {
+                    webViewInstance?.evaluateJavascript("if(window._sb_player) { window._sb_player.play(); }", null)
+                }
+                override fun onPause() {
+                    webViewInstance?.evaluateJavascript("if(window._sb_player) { window._sb_player.pause(); }", null)
+                }
+                override fun onSkipToNext() {
+                    webViewInstance?.evaluateJavascript("document.querySelector('.ytp-next-button')?.click() || document.querySelector('.ytm-next-button')?.click()", null)
+                }
+                override fun onSkipToPrevious() {
+                    webViewInstance?.evaluateJavascript("window.history.back()", null)
+                }
+            })
+            isActive = true
+        }
+    }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            mediaSession.isActive = false
+            mediaSession.release()
+        }
+    }
+
     var isFullscreen by remember { mutableStateOf(false) }
     var customViewRef by remember { mutableStateOf<View?>(null) }
     var customViewCallbackRef by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
@@ -119,7 +149,7 @@ fun YoutubeWebView(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                WebView(ctx).apply {
+                PersistentWebView(ctx).apply {
                     webViewInstance = this
                     setBackgroundColor(if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                     layoutParams = ViewGroup.LayoutParams(
@@ -174,7 +204,20 @@ fun YoutubeWebView(
                     }, { currentOnHighlightDetected(it) }, 
                     { currentOnOpenSettings() }, 
                     { currentOnOpenBrowserSettings() }, 
-                    { w, h -> currentOnVideoDimensionsChanged(w, h) })
+                    { w, h -> currentOnVideoDimensionsChanged(w, h) },
+                    { title, artist ->
+                        mediaSession.setMetadata(MediaMetadata.Builder()
+                            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                            .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                            .build())
+                    },
+                    { isPlaying ->
+                        val state = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
+                        mediaSession.setPlaybackState(PlaybackState.Builder()
+                            .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
+                            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+                            .build())
+                    })
                     addJavascriptInterface(bridge, "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {
@@ -626,12 +669,51 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
             setInterval(removeIntentLinks, 2000);
             removeIntentLinks();
 
-            // Prevent YouTube from auto-pausing when losing focus/visibility
-            document.addEventListener('visibilitychange', (e) => {
-                if (document.visibilityState === 'hidden' && window._sb_pip_active) {
-                    e.stopImmediatePropagation();
+            // Prevent YouTube from auto-pausing when losing focus/visibility or backgrounded
+            const blockVisibility = (e) => {
+                e.stopImmediatePropagation();
+            };
+            document.addEventListener('visibilitychange', blockVisibility, true);
+            document.addEventListener('webkitvisibilitychange', blockVisibility, true);
+            document.addEventListener('mozvisibilitychange', blockVisibility, true);
+            document.addEventListener('msvisibilitychange', blockVisibility, true);
+            document.addEventListener('pagehide', blockVisibility, true);
+            
+            const stateProp = { get: function() { return 'visible'; }, configurable: true };
+            const hiddenProp = { get: function() { return false; }, configurable: true };
+            
+            Object.defineProperty(document, 'visibilityState', stateProp);
+            Object.defineProperty(document, 'webkitVisibilityState', stateProp);
+            Object.defineProperty(document, 'mozVisibilityState', stateProp);
+            Object.defineProperty(document, 'msVisibilityState', stateProp);
+            
+            Object.defineProperty(document, 'hidden', hiddenProp);
+            Object.defineProperty(document, 'webkitHidden', hiddenProp);
+            Object.defineProperty(document, 'mozHidden', hiddenProp);
+            Object.defineProperty(document, 'msHidden', hiddenProp);
+
+            // Also prevent pausing on window blur and spoof focus
+            window.addEventListener('blur', blockVisibility, true);
+            document.hasFocus = function() { return true; };
+            
+            // IntersectionObserver spoofing to keep video "visible"
+            const NativeObserver = window.IntersectionObserver;
+            window.IntersectionObserver = class extends NativeObserver {
+                constructor(callback, options) {
+                    super((entries, observer) => {
+                        const modifiedEntries = entries.map(entry => {
+                            return new Proxy(entry, {
+                                get: (target, prop) => {
+                                    if (prop === 'isIntersecting') return true;
+                                    if (prop === 'intersectionRatio') return 1;
+                                    return target[prop];
+                                }
+                            });
+                        });
+                        callback(modifiedEntries, observer);
+                    }, options);
                 }
-            }, true);
+            };
             
             function clearElement(el) {
                 while (el.firstChild) {
@@ -764,14 +846,25 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
                     document.querySelector('.ytm-ad-playability-overlay-renderer')
                 );
                 
-                return { video, videoId, isAd };
+                // Extract metadata
+                let title = document.title;
+                if (title.endsWith(' - YouTube')) title = title.substring(0, title.length - 10);
+                
+                const channelName = document.querySelector('.ytm-item-section-renderer-header .yt-core-attributed-string')
+                                   || document.querySelector('.ytm-channel-name')
+                                   || document.querySelector('.slim-owner-channel-name')
+                                   || 'YouTube';
+
+                return { video, videoId, isAd, title, channelName: channelName.textContent || channelName };
             }
             
             let lastVideoId = null;
+            let lastTitle = null;
+            let lastIsPlaying = null;
             
             setInterval(() => {
                 try {
-                    const { video, videoId, isAd } = getInfo();
+                    const { video, videoId, isAd, title, channelName } = getInfo();
                     window._sb_player = video;
                     
                     // Fetch segments as soon as we have a videoId, even if an ad is playing.
@@ -779,6 +872,19 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
                     if (videoId && videoId !== lastVideoId) {
                         lastVideoId = videoId;
                         AndroidBridge.onVideoIdChanged(videoId);
+                    }
+
+                    if (title !== lastTitle) {
+                        lastTitle = title;
+                        AndroidBridge.updateMetadata(title, channelName);
+                    }
+                    
+                    if (video) {
+                        const isPlaying = !video.paused;
+                        if (isPlaying !== lastIsPlaying) {
+                            lastIsPlaying = isPlaying;
+                            AndroidBridge.updatePlaybackState(isPlaying);
+                        }
                     }
                     
                     // Only process time updates and rendering if not in an ad.
@@ -928,4 +1034,16 @@ private fun Context.findActivity(): Activity? {
         context = context.baseContext
     }
     return null
+}
+
+@SuppressLint("ViewConstructor")
+private class PersistentWebView(context: Context) : WebView(context) {
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        // Always report as visible to keep the engine running in background
+        super.onWindowVisibilityChanged(View.VISIBLE)
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, View.VISIBLE)
+    }
 }
