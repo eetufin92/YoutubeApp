@@ -30,7 +30,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -84,6 +92,12 @@ fun YoutubeWebView(
 
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
+    var currentUrl by remember { mutableStateOf(initialUrl) }
+
+    val isHomePage = remember(currentUrl) {
+        val uri = android.net.Uri.parse(currentUrl)
+        uri.host?.contains("youtube.com") == true && (uri.path == "/" || uri.path.isNullOrEmpty() || uri.path == "/index")
+    }
 
     val mediaSession = remember {
         MediaSession(context, "YoutubeApp").apply {
@@ -230,6 +244,7 @@ fun YoutubeWebView(
                             super.onPageFinished(view, url)
                             onLoadingStateChanged(false)
                             canGoBack = view?.canGoBack() ?: false
+                            currentUrl = url ?: ""
                             if (url?.contains("youtube.com") == true) {
                                 injectScripts(view, isDark, subtitleSize)
                                 
@@ -237,9 +252,10 @@ fun YoutubeWebView(
                                     var lastUrl = url
                                     repeat(40) {
                                         delay(500)
-                                        val currentUrl = view?.url
-                                        if (currentUrl != null && currentUrl != lastUrl) {
-                                            lastUrl = currentUrl
+                                        val currentUrlVal = view?.url
+                                        if (currentUrlVal != null && currentUrlVal != lastUrl) {
+                                            lastUrl = currentUrlVal
+                                            currentUrl = currentUrlVal
                                             canGoBack = view.canGoBack()
                                             injectScripts(view, isDark, subtitleSize)
                                         }
@@ -409,6 +425,46 @@ fun YoutubeWebView(
             }
         )
 
+        if (isHomePage && !isFullscreen) {
+            var showMenu by remember { mutableStateOf(false) }
+            
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 72.dp, end = 16.dp)
+            ) {
+                FloatingActionButton(
+                    onClick = { showMenu = true },
+                    containerColor = Color.Red,
+                    contentColor = Color.White
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("SponsorBlock Settings") },
+                        leadingIcon = { Icon(Icons.Filled.SkipNext, contentDescription = null) },
+                        onClick = {
+                            showMenu = false
+                            onOpenSettings()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Browser Settings") },
+                        leadingIcon = { Icon(Icons.Filled.Language, contentDescription = null) },
+                        onClick = {
+                            showMenu = false
+                            onOpenBrowserSettings()
+                        }
+                    )
+                }
+            }
+        }
+
         val skipOverlay: @Composable () -> Unit = {
             AnimatedVisibility(
                 visible = skipInfo != null,
@@ -551,102 +607,17 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
             if (window._sb_observer_active) return;
             window._sb_observer_active = true;
             
-            function injectSettingsButton() {
-                if (!window.location.pathname.includes('/select_site') && !window.location.pathname.includes('/settings')) return;
-                if (document.getElementById('sb-settings-button')) return;
-
-                const target = document.querySelector('ytm-settings') || document.querySelector('.ytm-settings');
-                if (!target) return;
-
-                const sbButton = document.createElement('div');
-                sbButton.id = 'sb-settings-button';
-                sbButton.className = 'ytm-setting-single-option-menu-renderer';
-                sbButton.style.padding = '16px';
-                sbButton.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-                
-                const sbContainer = document.createElement('div');
-                sbContainer.role = 'button';
-                sbContainer.tabIndex = 0;
-                sbContainer.className = 'setting-title-subtitle-block cairo-settings';
-                
-                const sbTitle = document.createElement('h3');
-                sbTitle.className = 'setting-title';
-                sbTitle.style.margin = '0';
-                sbTitle.style.fontSize = '16px';
-                const sbTitleSpan = document.createElement('span');
-                sbTitleSpan.className = 'ytAttributedStringHost';
-                sbTitleSpan.textContent = 'SponsorBlock Settings';
-                sbTitle.appendChild(sbTitleSpan);
-                
-                const sbSubtitle = document.createElement('span');
-                sbSubtitle.style.fontSize = '12px';
-                sbSubtitle.style.color = '#aaa';
-                const sbSubtitleSpan = document.createElement('span');
-                sbSubtitleSpan.className = 'ytAttributedStringHost';
-                sbSubtitleSpan.textContent = 'Configure skip categories';
-                sbSubtitle.appendChild(sbSubtitleSpan);
-                
-                sbContainer.appendChild(sbTitle);
-                sbContainer.appendChild(sbSubtitle);
-                sbButton.appendChild(sbContainer);
-                
-                sbButton.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    AndroidBridge.openSettings();
-                };
-
-                const browserButton = document.createElement('div');
-                browserButton.id = 'browser-settings-button';
-                browserButton.className = 'ytm-setting-single-option-menu-renderer';
-                browserButton.style.padding = '16px';
-                browserButton.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-                
-                const brContainer = document.createElement('div');
-                brContainer.role = 'button';
-                brContainer.tabIndex = 0;
-                brContainer.className = 'setting-title-subtitle-block cairo-settings';
-                
-                const brTitle = document.createElement('h3');
-                brTitle.className = 'setting-title';
-                brTitle.style.margin = '0';
-                brTitle.style.fontSize = '16px';
-                const brTitleSpan = document.createElement('span');
-                brTitleSpan.className = 'ytAttributedStringHost';
-                brTitleSpan.textContent = 'Browser Settings';
-                brTitle.appendChild(brTitleSpan);
-                
-                const brSubtitle = document.createElement('span');
-                brSubtitle.style.fontSize = '12px';
-                brSubtitle.style.color = '#aaa';
-                const brSubtitleSpan = document.createElement('span');
-                brSubtitleSpan.className = 'ytAttributedStringHost';
-                brSubtitleSpan.textContent = 'Configure user agent';
-                brSubtitle.appendChild(brSubtitleSpan);
-                
-                brContainer.appendChild(brTitle);
-                brContainer.appendChild(brSubtitle);
-                browserButton.appendChild(brContainer);
-                
-                browserButton.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    AndroidBridge.openBrowserSettings();
-                };
-
-                const sections = target.querySelectorAll('ytm-setting-category-collection-renderer');
-                if (sections.length > 0) {
-                    sections[0].appendChild(sbButton);
-                    sections[0].appendChild(browserButton);
-                } else {
-                    target.appendChild(sbButton);
-                    target.appendChild(browserButton);
-                }
+            function interceptShare() {
+                document.addEventListener('click', (e) => {
+                    const shareButton = e.target.closest('button[aria-label*="Share"], button[aria-label*="Jaa"], .ytm-share-button, .share-panel-service-button, .yt-spec-button-shape-next[aria-label*="Share"], .yt-spec-button-shape-next[aria-label*="Jaa"]');
+                    if (shareButton) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        AndroidBridge.share(window.location.href);
+                    }
+                }, true);
             }
-
-            const menuObserver = new MutationObserver(injectSettingsButton);
-            menuObserver.observe(document.body, { childList: true, subtree: true });
-            injectSettingsButton();
+            interceptShare();
 
             function interceptShare() {
                 document.addEventListener('click', (e) => {
