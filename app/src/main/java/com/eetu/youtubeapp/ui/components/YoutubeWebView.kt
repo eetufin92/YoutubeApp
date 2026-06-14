@@ -161,7 +161,16 @@ fun YoutubeWebView(
         }
     } else if (canGoBack) {
         BackHandler {
-            webViewInstance?.goBack()
+            webViewInstance?.let {
+                if (it.canGoBack()) {
+                    it.goBack()
+                    // Update state after a small delay to allow WebView to update its internal history
+                    it.postDelayed({
+                        canGoBack = it.canGoBack()
+                        currentUrl = it.url ?: ""
+                    }, 100)
+                }
+            }
         }
     }
 
@@ -239,13 +248,24 @@ fun YoutubeWebView(
                             .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
                             .build())
                     },
-                    { y -> scrollY = y })
+                    { y -> scrollY = y },
+                    {
+                        canGoBack = canGoBack()
+                        currentUrl = url ?: ""
+                    })
                     addJavascriptInterface(bridge, "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             super.onPageStarted(view, url, favicon)
                             onLoadingStateChanged(true)
+                            canGoBack = view?.canGoBack() ?: false
+                        }
+
+                        override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                            super.doUpdateVisitedHistory(view, url, isReload)
+                            canGoBack = view?.canGoBack() ?: false
+                            currentUrl = url ?: ""
                         }
 
                         override fun onPageFinished(view: WebView?, url: String?) {
@@ -255,20 +275,6 @@ fun YoutubeWebView(
                             currentUrl = url ?: ""
                             if (url?.contains("youtube.com") == true) {
                                 injectScripts(view, isDark, subtitleSize)
-                                
-                                CoroutineScope(Dispatchers.Main).launch {
-                                    var lastUrl = url
-                                    repeat(40) {
-                                        delay(500)
-                                        val currentUrlVal = view?.url
-                                        if (currentUrlVal != null && currentUrlVal != lastUrl) {
-                                            lastUrl = currentUrlVal
-                                            currentUrl = currentUrlVal
-                                            canGoBack = view.canGoBack()
-                                            injectScripts(view, isDark, subtitleSize)
-                                        }
-                                    }
-                                }
                             }
                         }
 
@@ -853,9 +859,16 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
             let lastVideoId = null;
             let lastTitle = null;
             let lastIsPlaying = null;
+            let lastHref = null;
             
             setInterval(() => {
                 try {
+                    const currentHref = window.location.href;
+                    if (currentHref !== lastHref) {
+                        lastHref = currentHref;
+                        AndroidBridge.onNavigationStateChanged();
+                    }
+
                     const { video, videoId, isAd, title, channelName } = getInfo();
                     window._sb_player = video;
                     
