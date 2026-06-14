@@ -24,9 +24,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -202,21 +199,6 @@ fun YoutubeWebView(
 
                         cacheMode = WebSettings.LOAD_DEFAULT
                         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-
-                        // Enable modern dark mode support
-                        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-                            @Suppress("DEPRECATION")
-                            WebSettingsCompat.setForceDark(settings, if (isDark) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
-                        }
-
-                        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
-                            @Suppress("DEPRECATION")
-                            WebSettingsCompat.setForceDarkStrategy(settings, WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING)
-                        }
-
-                        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-                            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, isDark)
-                        }
 
                         val customUA = sponsorBlockManager.getUserAgent()
                         userAgentString = if (customUA.isNotEmpty()) {
@@ -630,18 +612,6 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
             if (window._sb_observer_active) return;
             window._sb_observer_active = true;
             
-            function interceptShare() {
-                document.addEventListener('click', (e) => {
-                    const shareButton = e.target.closest('button[aria-label*="Share"], button[aria-label*="Jaa"], .ytm-share-button, .share-panel-service-button, .yt-spec-button-shape-next[aria-label*="Share"], .yt-spec-button-shape-next[aria-label*="Jaa"]');
-                    if (shareButton) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        AndroidBridge.share(window.location.href);
-                    }
-                }, true);
-            }
-            interceptShare();
-
             function interceptShare() {
                 document.addEventListener('click', (e) => {
                     const shareButton = e.target.closest('button[aria-label*="Share"], button[aria-label*="Jaa"], .ytm-share-button, .share-panel-service-button, .yt-spec-button-shape-next[aria-label*="Share"], .yt-spec-button-shape-next[aria-label*="Jaa"]');
