@@ -163,6 +163,7 @@ fun YoutubeWebView(
             webViewInstance?.let {
                 if (it.canGoBack()) {
                     it.goBack()
+                    it.evaluateJavascript("if(window.resetDimTimer) window.resetDimTimer();", null)
                     // Update state after a small delay to allow WebView to update its internal history
                     it.postDelayed({
                         canGoBack = it.canGoBack()
@@ -226,6 +227,7 @@ fun YoutubeWebView(
                             .build())
                     },
                     { isPlaying ->
+                        keepScreenOn = isPlaying
                         val state = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
                         mediaSession.setPlaybackState(PlaybackState.Builder()
                             .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
@@ -236,6 +238,7 @@ fun YoutubeWebView(
                     {
                         canGoBack = canGoBack()
                         currentUrl = url ?: ""
+                        evaluateJavascript("if(window.resetDimTimer) window.resetDimTimer();", null)
                     })
                     addJavascriptInterface(bridge, "AndroidBridge")
 
@@ -244,6 +247,7 @@ fun YoutubeWebView(
                             super.onPageStarted(view, url, favicon)
                             onLoadingStateChanged(true)
                             canGoBack = view?.canGoBack() ?: false
+                            view?.evaluateJavascript("if(window.resetDimTimer) window.resetDimTimer();", null)
                         }
 
                         override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -710,8 +714,11 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                 if (window._sb_auto_dim_enabled) {
                     dimTimeout = setTimeout(() => {
                         const video = document.querySelector('video');
-                        // Only dim if video is playing and we are not in fullscreen (native fullscreen handles it)
-                        if (video && !video.paused && !document.webkitIsFullScreen) {
+                        // Only dim if video is playing and we are not in fullscreen
+                        // Also don't dim if it's an ad (optional, but usually better)
+                        const isAd = !!(document.querySelector('.ad-showing') || document.querySelector('.ad-interrupting'));
+                        
+                        if (video && !video.paused && !isAd && !document.webkitIsFullScreen && !document.fullscreenElement) {
                             document.body.classList.add('sb-auto-dim');
                         }
                     }, 15000);
@@ -721,6 +728,11 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
             ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'].forEach(event => {
                 document.addEventListener(event, resetDimTimer, { passive: true });
             });
+            window.addEventListener('popstate', resetDimTimer);
+            window.addEventListener('hashchange', resetDimTimer);
+            document.addEventListener('fullscreenchange', resetDimTimer);
+            document.addEventListener('webkitfullscreenchange', resetDimTimer);
+
             window.resetDimTimer = resetDimTimer;
             resetDimTimer();
 
