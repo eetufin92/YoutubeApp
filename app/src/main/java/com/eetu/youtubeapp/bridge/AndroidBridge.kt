@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
-import com.eetu.youtubeapp.data.SponsorBlockManager
+import com.eetu.youtubeapp.data.YouTubeSettingsManager
 import com.eetu.youtubeapp.data.model.Segment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +26,7 @@ class AndroidBridge(
     private val onNavigationStateChanged: () -> Unit = {}
 ) {
     private val prefs = context.getSharedPreferences("sponsorblock_prefs", Context.MODE_PRIVATE)
-    private val sponsorBlockManager = SponsorBlockManager(context)
+    private val youtubeSettingsManager = YouTubeSettingsManager(context)
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     
     private var currentVideoId: String? = null
@@ -141,7 +141,7 @@ class AndroidBridge(
         lastHeight = 0
         
         scope.launch {
-            segments = sponsorBlockManager.fetchSegments(videoId)
+            segments = youtubeSettingsManager.fetchSegments(videoId)
             Log.d("AndroidBridge", "Fetched ${segments.size} segments for $videoId")
             pushSegmentsToJs()
         }
@@ -151,7 +151,7 @@ class AndroidBridge(
         val currentSegments = segments
         val segmentsJson = org.json.JSONArray()
         // Only include segments the user wants to see/skip
-        currentSegments.filter { sponsorBlockManager.shouldSkip(it.category) || it.category == "poi_highlight" }.forEach { segment ->
+        currentSegments.filter { youtubeSettingsManager.shouldSkip(it.category) || it.category == "poi_highlight" }.forEach { segment ->
             val obj = org.json.JSONObject()
             obj.put("start", segment.start)
             obj.put("end", segment.end)
@@ -171,7 +171,7 @@ class AndroidBridge(
         // Auto-skip logic
         val segmentToSkip = currentSegments.find { segment ->
             currentTime >= segment.start && currentTime < segment.end &&
-                    sponsorBlockManager.shouldSkip(segment.category) &&
+                    youtubeSettingsManager.shouldSkip(segment.category) &&
                     segment.uuid != lastSkippedUuid
         }
 

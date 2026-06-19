@@ -28,7 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.eetu.youtubeapp.data.SponsorBlockManager
+import com.eetu.youtubeapp.data.YouTubeSettingsManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +36,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val sponsorBlockManager = remember { SponsorBlockManager(context) }
+    val youtubeSettingsManager = remember { YouTubeSettingsManager(context) }
     
     val categories = listOf(
         "sponsor" to "Sponsors",
@@ -52,7 +52,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SponsorBlock Settings") },
+                title = { Text("YouTube Settings") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
@@ -76,7 +76,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
             
             categories.forEach { (id, label) ->
-                var enabled by remember { mutableStateOf(sponsorBlockManager.shouldSkip(id)) }
+                var enabled by remember { mutableStateOf(youtubeSettingsManager.shouldSkip(id)) }
                 
                 Row(
                     modifier = Modifier
@@ -89,7 +89,7 @@ fun SettingsScreen(
                         checked = enabled,
                         onCheckedChange = { 
                             enabled = it
-                            sponsorBlockManager.setShouldSkip(id, it)
+                            youtubeSettingsManager.setShouldSkip(id, it)
                         }
                     )
                 }
@@ -103,7 +103,7 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            var noticeDuration by remember { mutableFloatStateOf(sponsorBlockManager.getNoticeDuration().toFloat()) }
+            var noticeDuration by remember { mutableFloatStateOf(youtubeSettingsManager.getNoticeDuration().toFloat()) }
 
             Text(
                 text = "Show skip/highlight alerts for ${noticeDuration.toInt()} seconds",
@@ -115,7 +115,7 @@ fun SettingsScreen(
                 value = noticeDuration,
                 onValueChange = { 
                     noticeDuration = it
-                    sponsorBlockManager.setNoticeDuration(it.toInt())
+                    youtubeSettingsManager.setNoticeDuration(it.toInt())
                 },
                 valueRange = 1f..20f,
                 steps = 18,

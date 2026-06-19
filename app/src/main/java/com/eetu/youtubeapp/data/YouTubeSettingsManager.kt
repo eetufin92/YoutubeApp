@@ -2,7 +2,6 @@ package com.eetu.youtubeapp.data
 
 import android.content.Context
 import com.eetu.youtubeapp.data.model.Segment
-import com.eetu.youtubeapp.data.model.VideoSegmentsResponse
 import com.eetu.youtubeapp.data.remote.SponsorBlockApiService
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -17,8 +16,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class SponsorBlockManager(private val context: Context) {
-    private val prefs = context.getSharedPreferences("sb_manager_prefs", Context.MODE_PRIVATE)
+class YouTubeSettingsManager(private val context: Context) {
+    private val prefs = context.getSharedPreferences("youtube_settings_prefs", Context.MODE_PRIVATE)
     private val scriptFile = File(context.filesDir, "sb_latest.js")
     
     init {
@@ -123,6 +122,14 @@ class SponsorBlockManager(private val context: Context) {
         prefs.edit().putInt("notice_duration", seconds).apply()
     }
 
+    fun getAutoDim(): Boolean {
+        return prefs.getBoolean("auto_dim", false)
+    }
+
+    fun setAutoDim(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_dim", enabled).apply()
+    }
+
     suspend fun fetchSegments(videoID: String): List<Segment> = withContext(Dispatchers.IO) {
         try {
             val hash = sha256(videoID)
@@ -135,18 +142,18 @@ class SponsorBlockManager(private val context: Context) {
             
             if (response.isSuccessful) {
                 val results = response.body() ?: emptyList()
-                android.util.Log.d("SponsorBlockManager", "Fetched ${results.size} results for prefix $prefix")
+                android.util.Log.d("YouTubeSettingsManager", "Fetched ${results.size} results for prefix $prefix")
                 // Match the full videoID from the k-anonymity results
                 val segments = results.find { it.videoID == videoID }?.segments ?: emptyList()
-                android.util.Log.d("SponsorBlockManager", "Found ${segments.size} segments for videoID $videoID: $segments")
+                android.util.Log.d("YouTubeSettingsManager", "Found ${segments.size} segments for videoID $videoID: $segments")
                 segments
             } else {
                 val errorBody = response.errorBody()?.string()
-                android.util.Log.e("SponsorBlockManager", "Failed to fetch segments: ${response.code()} - $errorBody")
+                android.util.Log.e("YouTubeSettingsManager", "Failed to fetch segments: ${response.code()} - $errorBody")
                 emptyList()
             }
         } catch (e: Exception) {
-            android.util.Log.e("SponsorBlockManager", "Error fetching segments", e)
+            android.util.Log.e("YouTubeSettingsManager", "Error fetching segments", e)
             emptyList()
         }
     }

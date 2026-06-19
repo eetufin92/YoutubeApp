@@ -61,7 +61,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.eetu.youtubeapp.bridge.AndroidBridge
-import com.eetu.youtubeapp.data.SponsorBlockManager
+import com.eetu.youtubeapp.data.YouTubeSettingsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -86,9 +86,10 @@ fun YoutubeWebView(
     isInPip: Boolean = false
 ) {
     val context = LocalContext.current
-    val sponsorBlockManager = remember { SponsorBlockManager(context) }
+    val youtubeSettingsManager = remember { YouTubeSettingsManager(context) }
     val isDark = isSystemInDarkTheme()
-    val subtitleSize = sponsorBlockManager.getSubtitleSize()
+    val subtitleSize = youtubeSettingsManager.getSubtitleSize()
+    val autoDim = youtubeSettingsManager.getAutoDim()
 
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -142,7 +143,7 @@ fun YoutubeWebView(
     val currentOnOpenBrowserSettings by rememberUpdatedState(onOpenBrowserSettings)
     val currentOnVideoDimensionsChanged by rememberUpdatedState(onVideoDimensionsChanged)
 
-    val noticeDuration = remember { sponsorBlockManager.getNoticeDuration() }
+    val noticeDuration = remember { youtubeSettingsManager.getNoticeDuration() }
 
     LaunchedEffect(skipInfo) {
         if (skipInfo != null) {
@@ -200,7 +201,7 @@ fun YoutubeWebView(
                         cacheMode = WebSettings.LOAD_DEFAULT
                         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
-                        val customUA = sponsorBlockManager.getUserAgent()
+                        val customUA = youtubeSettingsManager.getUserAgent()
                         userAgentString = if (customUA.isNotEmpty()) {
                             customUA
                         } else {
@@ -256,7 +257,7 @@ fun YoutubeWebView(
                             canGoBack = view?.canGoBack() ?: false
                             currentUrl = url ?: ""
                             if (url?.contains("youtube.com") == true) {
-                                injectScripts(view, isDark, subtitleSize)
+                                injectScripts(view, isDark, subtitleSize, autoDim)
                             }
                         }
 
@@ -418,6 +419,8 @@ fun YoutubeWebView(
                 } else {
                     view.evaluateJavascript("window._sb_pip_active = false;", null)
                 }
+
+                view.evaluateJavascript("window._sb_auto_dim_enabled = $autoDim; if(window.resetDimTimer) window.resetDimTimer();", null)
             }
         )
 
@@ -526,11 +529,12 @@ fun YoutubeWebView(
     }
 }
 
-private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int) {
+private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int, autoDim: Boolean) {
     val view = webView ?: return
 
     val cosmeticScript = """
         (function() {
+            window._sb_auto_dim_enabled = $autoDim;
             var meta = document.querySelector('meta[name="viewport"]');
             if (!meta) {
                 meta = document.createElement('meta');
@@ -579,7 +583,38 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
                 button[onclick*="intent://"] {
                     display: none !important;
                 }
+
+                .sb-dim-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.8);
+                    z-index: 2147483640;
+                    pointer-events: none;
+                    opacity: 0;
+                    transition: opacity 1.5s;
+                }
+                body.sb-auto-dim .sb-dim-overlay {
+                    opacity: 1;
+                }
+                body.sb-auto-dim .html5-video-player, 
+                body.sb-auto-dim .player-container,
+                body.sb-auto-dim #player-container,
+                body.sb-auto-dim .ytp-player-content,
+                body.sb-auto-dim video {
+                    z-index: 2147483641 !important;
+                }
             `;
+
+            var dimOverlay = document.getElementById('sb-dim-overlay');
+            if (!dimOverlay) {
+                dimOverlay = document.createElement('div');
+                dimOverlay.id = 'sb-dim-overlay';
+                dimOverlay.className = 'sb-dim-overlay';
+                document.body.appendChild(dimOverlay);
+            }
 
             var subStyleId = 'sb-subtitle-style';
             var subStyle = document.getElementById(subStyleId);
@@ -663,6 +698,28 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int)
             window.addEventListener('scroll', () => {
                 AndroidBridge.onScroll(window.scrollY);
             }, { passive: true });
+
+            let dimTimeout = null;
+            function resetDimTimer() {
+                if (dimTimeout) clearTimeout(dimTimeout);
+                document.body.classList.remove('sb-auto-dim');
+                
+                if (window._sb_auto_dim_enabled) {
+                    dimTimeout = setTimeout(() => {
+                        const video = document.querySelector('video');
+                        // Only dim if video is playing and we are not in fullscreen (native fullscreen handles it)
+                        if (video && !video.paused && !document.webkitIsFullScreen) {
+                            document.body.classList.add('sb-auto-dim');
+                        }
+                    }, 15000);
+                }
+            }
+            
+            ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+                document.addEventListener(event, resetDimTimer, { passive: true });
+            });
+            window.resetDimTimer = resetDimTimer;
+            resetDimTimer();
 
             // IntersectionObserver spoofing to keep video "visible"
             const NativeObserver = window.IntersectionObserver;

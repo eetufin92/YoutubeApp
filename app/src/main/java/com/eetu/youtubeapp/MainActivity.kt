@@ -215,7 +215,7 @@ fun PlayerScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val sponsorBlockManager = remember { com.eetu.youtubeapp.data.SponsorBlockManager(context) }
+    val youtubeSettingsManager = remember { com.eetu.youtubeapp.data.YouTubeSettingsManager(context) }
     val activity = remember(context) { context.findActivity() }
     var isFullscreen by remember { mutableStateOf(false) }
     
@@ -243,7 +243,7 @@ fun PlayerScreen(
                     },
                     onHighlightDetected = { time ->
                         scope.launch {
-                            val durationSeconds = sponsorBlockManager.getNoticeDuration()
+                            val durationSeconds = youtubeSettingsManager.getNoticeDuration()
                             val snackbarJob = launch {
                                 val result = snackbarHostState.showSnackbar(
                                     message = "Highlight found",
