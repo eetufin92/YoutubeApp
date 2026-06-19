@@ -130,6 +130,14 @@ class YouTubeSettingsManager(private val context: Context) {
         prefs.edit().putBoolean("auto_dim", enabled).apply()
     }
 
+    fun getPreferredCaptionLanguage(): String {
+        return prefs.getString("caption_language", "") ?: ""
+    }
+
+    fun setPreferredCaptionLanguage(langCode: String) {
+        prefs.edit().putString("caption_language", langCode).apply()
+    }
+
     suspend fun fetchSegments(videoID: String): List<Segment> = withContext(Dispatchers.IO) {
         try {
             val hash = sha256(videoID)

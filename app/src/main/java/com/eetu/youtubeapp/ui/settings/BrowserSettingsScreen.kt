@@ -43,6 +43,7 @@ fun BrowserSettingsScreen(
     var userAgent by remember { mutableStateOf(youtubeSettingsManager.getUserAgent()) }
     var subtitleSize by remember { mutableFloatStateOf(youtubeSettingsManager.getSubtitleSize().toFloat()) }
     var autoDimEnabled by remember { mutableStateOf(youtubeSettingsManager.getAutoDim()) }
+    var captionLang by remember { mutableStateOf(youtubeSettingsManager.getPreferredCaptionLanguage()) }
     var statusMessage by remember { mutableStateOf("") }
 
     Scaffold(
@@ -130,11 +131,30 @@ fun BrowserSettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            Text(
+                text = "Preferred Caption Language",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = captionLang,
+                onValueChange = { captionLang = it },
+                label = { Text("Language Code (e.g. en, fi, ko)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
             Button(
                 onClick = {
                     youtubeSettingsManager.setUserAgent(userAgent)
                     youtubeSettingsManager.setSubtitleSize(subtitleSize.toInt())
                     youtubeSettingsManager.setAutoDim(autoDimEnabled)
+                    youtubeSettingsManager.setPreferredCaptionLanguage(captionLang)
                     statusMessage = "Settings saved! Some changes may require app restart."
                 },
                 modifier = Modifier.fillMaxWidth()

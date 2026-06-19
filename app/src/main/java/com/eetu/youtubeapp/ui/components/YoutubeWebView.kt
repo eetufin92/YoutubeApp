@@ -90,6 +90,7 @@ fun YoutubeWebView(
     val isDark = isSystemInDarkTheme()
     val subtitleSize = youtubeSettingsManager.getSubtitleSize()
     val autoDim = youtubeSettingsManager.getAutoDim()
+    val preferredCaptionLang = youtubeSettingsManager.getPreferredCaptionLanguage()
 
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -257,7 +258,7 @@ fun YoutubeWebView(
                             canGoBack = view?.canGoBack() ?: false
                             currentUrl = url ?: ""
                             if (url?.contains("youtube.com") == true) {
-                                injectScripts(view, isDark, subtitleSize, autoDim)
+                                injectScripts(view, isDark, subtitleSize, autoDim, preferredCaptionLang)
                             }
                         }
 
@@ -421,6 +422,7 @@ fun YoutubeWebView(
                 }
 
                 view.evaluateJavascript("window._sb_auto_dim_enabled = $autoDim; if(window.resetDimTimer) window.resetDimTimer();", null)
+                view.evaluateJavascript("window._sb_preferred_lang = '$preferredCaptionLang';", null)
             }
         )
 
@@ -529,12 +531,13 @@ fun YoutubeWebView(
     }
 }
 
-private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int, autoDim: Boolean) {
+private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int, autoDim: Boolean, preferredLang: String) {
     val view = webView ?: return
 
     val cosmeticScript = """
         (function() {
             window._sb_auto_dim_enabled = $autoDim;
+            window._sb_preferred_lang = '$preferredLang';
             var meta = document.querySelector('meta[name="viewport"]');
             if (!meta) {
                 meta = document.createElement('meta');
@@ -945,6 +948,31 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                 }
             }, 250); // Increased frequency to 250ms for snappier skipping and loading.
             window._sb_debug = true;
+
+            function applyPreferredCaption() {
+                const lang = window._sb_preferred_lang;
+                if (!lang) return;
+
+                const player = document.getElementById('movie_player');
+                if (player && typeof player.setOption === 'function') {
+                    const tracklist = player.getOption('captions', 'tracklist');
+                    if (tracklist && tracklist.length > 0) {
+                        const targetTrack = tracklist.find(t => t.languageCode === lang) || 
+                                           tracklist.find(t => t.languageCode.startsWith(lang));
+                        
+                        if (targetTrack) {
+                            const currentTrack = player.getOption('captions', 'track');
+                            if (!currentTrack || currentTrack.languageCode !== targetTrack.languageCode) {
+                                player.setOption('captions', 'track', {'languageCode': targetTrack.languageCode});
+                                console.log('SponsorBlock: Applied caption language', targetTrack.languageCode);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Re-apply captions periodically when video changes or loads
+            setInterval(applyPreferredCaption, 5000);
         })();
     """.trimIndent()
 
