@@ -610,7 +610,12 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                 body.sb-auto-dim .player-container,
                 body.sb-auto-dim #player-container,
                 body.sb-auto-dim .ytp-player-content,
-                body.sb-auto-dim video {
+                body.sb-auto-dim video,
+                body.sb-undimming .html5-video-player, 
+                body.sb-undimming .player-container,
+                body.sb-undimming #player-container,
+                body.sb-undimming .ytp-player-content,
+                body.sb-undimming video {
                     z-index: 2147483641 !important;
                 }
             `;
@@ -707,18 +712,37 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
             }, { passive: true });
 
             let dimTimeout = null;
+            let undimTimeout = null;
             function resetDimTimer() {
                 if (dimTimeout) clearTimeout(dimTimeout);
-                document.body.classList.remove('sb-auto-dim');
+                
+                if (document.body.classList.contains('sb-auto-dim')) {
+                    document.body.classList.remove('sb-auto-dim');
+                    document.body.classList.add('sb-undimming');
+                }
+
+                if (document.body.classList.contains('sb-undimming')) {
+                    if (undimTimeout) clearTimeout(undimTimeout);
+                    undimTimeout = setTimeout(() => {
+                        document.body.classList.remove('sb-undimming');
+                        undimTimeout = null;
+                    }, 1500);
+                }
                 
                 if (window._sb_auto_dim_enabled) {
                     dimTimeout = setTimeout(() => {
                         const video = document.querySelector('video');
                         // Only dim if video is playing and we are not in fullscreen
-                        // Also don't dim if it's an ad (optional, but usually better)
-                        const isAd = !!(document.querySelector('.ad-showing') || document.querySelector('.ad-interrupting'));
+                        // Also don't dim if it's an ad
+                        const isAd = !!(
+                            document.querySelector('.ad-showing') || 
+                            document.querySelector('.ad-interrupting') ||
+                            document.querySelector('.ytp-ad-player-overlay') ||
+                            document.querySelector('.ytm-ad-playability-overlay-renderer')
+                        );
+                        const isWatchPage = window.location.pathname.startsWith('/watch') || window.location.pathname.startsWith('/shorts');
                         
-                        if (video && !video.paused && !isAd && !document.webkitIsFullScreen && !document.fullscreenElement) {
+                        if (isWatchPage && video && !video.paused && !isAd && !document.webkitIsFullScreen && !document.fullscreenElement) {
                             document.body.classList.add('sb-auto-dim');
                         }
                     }, 15000);
