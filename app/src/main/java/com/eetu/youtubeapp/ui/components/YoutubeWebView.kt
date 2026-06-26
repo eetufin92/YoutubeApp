@@ -601,21 +601,28 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                     z-index: 2147483640;
                     pointer-events: none;
                     opacity: 0;
-                    transition: opacity 1.5s;
                 }
                 body.sb-auto-dim .sb-dim-overlay {
                     opacity: 1;
+                    transition: opacity 1.5s;
                 }
+                /* Boost player containers above dim overlay. 
+                   We don't boost the 'video' tag directly because it would cover its own controls.
+                   We also don't boost during 'sb-undimming' to ensure the first tap correctly reaches 
+                   YouTube's control-detection layers which might be at a lower global z-index. */
                 body.sb-auto-dim .html5-video-player, 
                 body.sb-auto-dim .player-container,
                 body.sb-auto-dim #player-container,
                 body.sb-auto-dim .ytp-player-content,
-                body.sb-auto-dim video,
-                body.sb-undimming .html5-video-player, 
-                body.sb-undimming .player-container,
-                body.sb-undimming #player-container,
-                body.sb-undimming .ytp-player-content,
-                body.sb-undimming video {
+                body.sb-auto-dim .ytm-video-player,
+                body.sb-auto-dim .ytm-video-player-container,
+                body.sb-auto-dim .ytm-video-player-overlay,
+                body.sb-auto-dim .ytm-player-overlay-renderer,
+                body.sb-auto-dim .ytp-chrome-bottom,
+                body.sb-auto-dim .ytp-chrome-top,
+                body.sb-auto-dim .ytp-chrome-controls,
+                body.sb-auto-dim .ytp-gradient-bottom,
+                body.sb-auto-dim .ytp-gradient-top {
                     z-index: 2147483641 !important;
                 }
             `;
@@ -712,21 +719,11 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
             }, { passive: true });
 
             let dimTimeout = null;
-            let undimTimeout = null;
             function resetDimTimer() {
                 if (dimTimeout) clearTimeout(dimTimeout);
                 
                 if (document.body.classList.contains('sb-auto-dim')) {
                     document.body.classList.remove('sb-auto-dim');
-                    document.body.classList.add('sb-undimming');
-                }
-
-                if (document.body.classList.contains('sb-undimming')) {
-                    if (undimTimeout) clearTimeout(undimTimeout);
-                    undimTimeout = setTimeout(() => {
-                        document.body.classList.remove('sb-undimming');
-                        undimTimeout = null;
-                    }, 1500);
                 }
                 
                 if (window._sb_auto_dim_enabled) {
