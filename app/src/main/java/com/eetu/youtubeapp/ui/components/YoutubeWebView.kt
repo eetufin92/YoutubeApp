@@ -426,7 +426,7 @@ fun YoutubeWebView(
                 }
 
                 view.evaluateJavascript("window._sb_auto_dim_enabled = $autoDim; if(window.resetDimTimer) window.resetDimTimer();", null)
-                view.evaluateJavascript("window._sb_preferred_lang = '$preferredCaptionLang';", null)
+                view.evaluateJavascript("if (window._sb_preferred_lang !== '$preferredCaptionLang') { window._sb_preferred_lang = '$preferredCaptionLang'; window._sb_last_caption_video_id = null; }", null)
             }
         )
 
@@ -920,6 +920,7 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
             }
             
             let lastVideoId = null;
+            window._sb_last_caption_video_id = null;
             let lastTitle = null;
             let lastIsPlaying = null;
             let lastHref = null;
@@ -988,17 +989,22 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
 
                 const player = document.getElementById('movie_player');
                 if (player && typeof player.setOption === 'function') {
+                    const { videoId } = getInfo();
+                    if (!videoId || videoId === window._sb_last_caption_video_id) return;
+
                     const tracklist = player.getOption('captions', 'tracklist');
                     if (tracklist && tracklist.length > 0) {
                         const targetTrack = tracklist.find(t => t.languageCode === lang) || 
                                            tracklist.find(t => t.languageCode.startsWith(lang));
                         
                         if (targetTrack) {
-                            const currentTrack = player.getOption('captions', 'track');
-                            if (!currentTrack || currentTrack.languageCode !== targetTrack.languageCode) {
+                            const currentTrack = player.getOption('captions', 'track') || {};
+                            if (currentTrack.languageCode !== targetTrack.languageCode) {
                                 player.setOption('captions', 'track', {'languageCode': targetTrack.languageCode});
                                 console.log('SponsorBlock: Applied caption language', targetTrack.languageCode);
                             }
+                            // Only mark as handled once we found a suitable track and attempted to apply it (or confirmed it's already set)
+                            window._sb_last_caption_video_id = videoId;
                         }
                     }
                 }
