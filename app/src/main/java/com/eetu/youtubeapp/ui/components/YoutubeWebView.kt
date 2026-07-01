@@ -739,14 +739,19 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                         );
                         const isWatchPage = window.location.pathname.startsWith('/watch') || window.location.pathname.startsWith('/shorts');
                         
-                        if (isWatchPage && video && !video.paused && !isAd && !document.webkitIsFullScreen && !document.fullscreenElement) {
+                        const activeEl = document.activeElement;
+                        const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+
+                        if (isWatchPage && video && !video.paused && !isAd && !document.webkitIsFullScreen && !document.fullscreenElement && !isTyping) {
                             document.body.classList.add('sb-auto-dim');
+                        } else if (isTyping) {
+                            resetDimTimer();
                         }
                     }, 15000);
                 }
             }
             
-            ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+            ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'input', 'focusin'].forEach(event => {
                 document.addEventListener(event, resetDimTimer, { passive: true });
             });
             window.addEventListener('popstate', resetDimTimer);
