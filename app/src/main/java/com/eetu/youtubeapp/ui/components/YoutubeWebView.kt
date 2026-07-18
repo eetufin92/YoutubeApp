@@ -62,6 +62,7 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.eetu.youtubeapp.bridge.AndroidBridge
 import com.eetu.youtubeapp.data.YouTubeSettingsManager
+import com.eetu.youtubeapp.service.PlaybackService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -129,6 +130,7 @@ fun YoutubeWebView(
         onDispose {
             mediaSession.isActive = false
             mediaSession.release()
+            PlaybackService.stop(context)
         }
     }
 
@@ -690,6 +692,7 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
             // Prevent YouTube from auto-pausing when losing focus/visibility or backgrounded
             const blockVisibility = (e) => {
                 e.stopImmediatePropagation();
+                e.preventDefault();
             };
             document.addEventListener('visibilitychange', blockVisibility, true);
             document.addEventListener('webkitvisibilitychange', blockVisibility, true);
@@ -710,8 +713,13 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
             Object.defineProperty(document, 'mozHidden', hiddenProp);
             Object.defineProperty(document, 'msHidden', hiddenProp);
 
+            // Spoof window properties as well
+            Object.defineProperty(window, 'visibilityState', stateProp);
+            Object.defineProperty(window, 'hidden', hiddenProp);
+
             // Also prevent pausing on window blur and spoof focus
             window.addEventListener('blur', blockVisibility, true);
+            window.addEventListener('focus', blockVisibility, true);
             document.hasFocus = function() { return true; };
             
             window.addEventListener('scroll', () => {
@@ -751,8 +759,8 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                 }
             }
             
-            ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'input', 'focusin'].forEach(event => {
-                document.addEventListener(event, resetDimTimer, { passive: true });
+            ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'touchmove', 'wheel', 'input', 'focusin'].forEach(event => {
+                document.addEventListener(event, resetDimTimer, { passive: true, capture: true });
             });
             window.addEventListener('popstate', resetDimTimer);
             window.addEventListener('hashchange', resetDimTimer);

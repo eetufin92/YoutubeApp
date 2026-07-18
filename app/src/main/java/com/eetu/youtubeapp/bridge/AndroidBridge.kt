@@ -6,6 +6,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.eetu.youtubeapp.data.YouTubeSettingsManager
 import com.eetu.youtubeapp.data.model.Segment
+import com.eetu.youtubeapp.service.PlaybackService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +31,8 @@ class AndroidBridge(
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     
     private var currentVideoId: String? = null
+    private var lastTitle: String? = null
+    private var lastArtist: String? = null
     @Volatile
     private var segments: List<Segment> = emptyList()
     private var lastSkippedUuid: String? = null
@@ -205,6 +208,8 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun updateMetadata(title: String, artist: String) {
+        lastTitle = title
+        lastArtist = artist
         webView.post {
             onMetadataChanged(title, artist)
         }
@@ -212,6 +217,11 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun updatePlaybackState(isPlaying: Boolean) {
+        if (isPlaying) {
+            PlaybackService.start(context, lastTitle, lastArtist)
+        } else {
+            PlaybackService.stop(context)
+        }
         webView.post {
             onPlaybackStateChanged(isPlaying)
         }
