@@ -217,10 +217,16 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun updatePlaybackState(isPlaying: Boolean) {
-        if (isPlaying) {
-            PlaybackService.start(context, lastTitle, lastArtist)
-        } else {
-            PlaybackService.stop(context)
+        com.eetu.youtubeapp.MainActivity.currentIsPlaying = isPlaying
+        com.eetu.youtubeapp.MainActivity.currentTitle = lastTitle
+        com.eetu.youtubeapp.MainActivity.currentArtist = lastArtist
+        
+        if (!com.eetu.youtubeapp.MainActivity.isAppVisible) {
+            if (isPlaying) {
+                PlaybackService.start(context, lastTitle, lastArtist)
+            } else {
+                PlaybackService.stop(context)
+            }
         }
         webView.post {
             onPlaybackStateChanged(isPlaying)

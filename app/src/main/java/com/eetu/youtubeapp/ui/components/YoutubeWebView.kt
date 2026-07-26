@@ -229,7 +229,14 @@ fun YoutubeWebView(
                             .build())
                     },
                     { isPlaying ->
+                        val activity = ctx.findActivity()
+                        if (isPlaying) {
+                            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
                         keepScreenOn = isPlaying
+                        customViewRef?.keepScreenOn = isPlaying
                         val state = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
                         mediaSession.setPlaybackState(PlaybackState.Builder()
                             .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
@@ -961,12 +968,14 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                         AndroidBridge.updateMetadata(title, channelName);
                     }
                     
+                    let isPlaying = false;
                     if (video) {
-                        const isPlaying = !video.paused;
-                        if (isPlaying !== lastIsPlaying) {
-                            lastIsPlaying = isPlaying;
-                            AndroidBridge.updatePlaybackState(isPlaying);
-                        }
+                        isPlaying = !video.paused;
+                    }
+                    
+                    if (isPlaying !== lastIsPlaying) {
+                        lastIsPlaying = isPlaying;
+                        AndroidBridge.updatePlaybackState(isPlaying);
                     }
                     
                     // Only process time updates and rendering if not in an ad.

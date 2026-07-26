@@ -67,6 +67,27 @@ class MainActivity : ComponentActivity() {
     private var intentUrl = mutableStateOf<String?>(null)
     private var videoDimensions = Pair(0, 0) // Use plain Pair for sync access
 
+    companion object {
+        var isAppVisible = false
+        var currentIsPlaying = false
+        var currentTitle: String? = null
+        var currentArtist: String? = null
+    }
+
+    override fun onStart() {
+        super.onStart()
+        isAppVisible = true
+        com.eetu.youtubeapp.service.PlaybackService.stop(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isAppVisible = false
+        if (currentIsPlaying) {
+            com.eetu.youtubeapp.service.PlaybackService.start(this, currentTitle, currentArtist)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
