@@ -155,6 +155,44 @@ fun YoutubeWebView(
         }
     }
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val currentOrientation = configuration.orientation
+
+    LaunchedEffect(currentOrientation) {
+        if (currentOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && !isFullscreen) {
+            webViewInstance?.evaluateJavascript(
+                """
+                (function() {
+                    var isFs = document.fullscreenElement || document.webkitFullscreenElement;
+                    if (!isFs) {
+                        var triggerClick = function(el) {
+                            if (!el) return false;
+                            el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+                            el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
+                            el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                            el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                            el.click();
+                            return true;
+                        };
+                        var btn = document.querySelector('.ytp-fullscreen-button, .ytm-fullscreen-button, .fullscreen-icon, button[aria-label*="ullscreen"], button[aria-label*="näyttö"]');
+                        if (!btn) {
+                            var btns = document.querySelectorAll('button');
+                            for(var i=0; i<btns.length; i++) {
+                                var c = (btns[i].className || '').toLowerCase();
+                                if(c.indexOf('fullscreen') !== -1) { btn = btns[i]; break; }
+                            }
+                        }
+                        if (btn) {
+                            triggerClick(btn);
+                        }
+                    }
+                })();
+                """.trimIndent(), null
+            )
+        }
+    }
+
     // Handle Back Button for WebView or Fullscreen
     if (isFullscreen) {
         BackHandler {
@@ -181,7 +219,8 @@ fun YoutubeWebView(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                PersistentWebView(ctx).apply {
+                val swipeLayout = androidx.swiperefreshlayout.widget.SwipeRefreshLayout(ctx)
+                val webView = PersistentWebView(ctx).apply {
                     webViewInstance = this
                     setBackgroundColor(if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                     layoutParams = ViewGroup.LayoutParams(
@@ -267,6 +306,7 @@ fun YoutubeWebView(
 
                         override fun onPageFinished(view: WebView?, url: String?) {
                             super.onPageFinished(view, url)
+                            swipeLayout.isRefreshing = false
                             onLoadingStateChanged(false)
                             canGoBack = view?.canGoBack() ?: false
                             currentUrl = url ?: ""
@@ -388,8 +428,25 @@ fun YoutubeWebView(
 
                     loadUrl(initialUrl)
                 }
+                swipeLayout.addView(webView)
+                swipeLayout.setOnRefreshListener {
+                    webView.reload()
+                }
+                swipeLayout
             },
-            update = { view ->
+            update = { swipeView ->
+                val swipeLayout = swipeView as androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                swipeLayout.isEnabled = isHomePage && !isFullscreen
+                var webViewChild: WebView? = null
+                for (i in 0 until swipeLayout.childCount) {
+                    val child = swipeLayout.getChildAt(i)
+                    if (child is WebView) {
+                        webViewChild = child
+                        break
+                    }
+                }
+                val view = webViewChild ?: return@AndroidView
+                
                 view.setBackgroundColor(if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                 if (jumpToTimeRequest != null) {
                     view.evaluateJavascript("if(window._sb_player) { window._sb_player.currentTime = $jumpToTimeRequest; }", null)
@@ -969,7 +1026,8 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                     }
                     
                     let isPlaying = false;
-                    if (video) {
+                    const isWatchPage = window.location.pathname.startsWith('/watch') || window.location.pathname.startsWith('/shorts') || window.location.pathname.startsWith('/live');
+                    if (video && isWatchPage) {
                         isPlaying = !video.paused;
                     }
                     
