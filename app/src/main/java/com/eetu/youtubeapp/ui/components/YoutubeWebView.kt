@@ -473,7 +473,8 @@ fun YoutubeWebView(
             },
             update = { swipeView ->
                 val swipeLayout = swipeView as androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-                swipeLayout.isEnabled = isHomePage && !isFullscreen
+                val isWatchPage = currentUrl.contains("/watch") || currentUrl.contains("/shorts")
+                swipeLayout.isEnabled = !isWatchPage && !isFullscreen
                 var webViewChild: WebView? = null
                 for (i in 0 until swipeLayout.childCount) {
                     val child = swipeLayout.getChildAt(i)
