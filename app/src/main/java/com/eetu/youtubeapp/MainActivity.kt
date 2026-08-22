@@ -72,6 +72,9 @@ class MainActivity : ComponentActivity() {
         var currentIsPlaying = false
         var currentTitle: String? = null
         var currentArtist: String? = null
+        var currentUrl: String = ""
+        val isWatchPage: Boolean
+            get() = currentUrl.contains("/watch") || currentUrl.contains("/shorts")
     }
 
     override fun onStart() {
@@ -83,7 +86,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         isAppVisible = false
-        if (currentIsPlaying) {
+        if (currentIsPlaying && isWatchPage) {
             com.eetu.youtubeapp.service.PlaybackService.start(this, currentTitle, currentArtist)
         }
     }

@@ -134,6 +134,43 @@ fun YoutubeWebView(
         }
     }
 
+    LaunchedEffect(currentUrl) {
+        com.eetu.youtubeapp.MainActivity.currentUrl = currentUrl
+    }
+
+    val noisyAudioReceiver = remember {
+        object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                if (intent.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                    webViewInstance?.evaluateJavascript("if(window._sb_player) { window._sb_player.pause(); } else { document.querySelector('video')?.pause(); }", null)
+                }
+            }
+        }
+    }
+    
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val filter = android.content.IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        context.registerReceiver(noisyAudioReceiver, filter)
+        onDispose {
+            context.unregisterReceiver(noisyAudioReceiver)
+        }
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                if (!com.eetu.youtubeapp.MainActivity.isWatchPage) {
+                    webViewInstance?.evaluateJavascript("if(window._sb_player) { window._sb_player.pause(); } else { document.querySelector('video')?.pause(); }", null)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     var isFullscreen by remember { mutableStateOf(false) }
     var customViewRef by remember { mutableStateOf<View?>(null) }
     var customViewCallbackRef by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }

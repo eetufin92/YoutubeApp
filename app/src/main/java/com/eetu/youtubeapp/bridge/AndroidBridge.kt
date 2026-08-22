@@ -222,7 +222,7 @@ class AndroidBridge(
         com.eetu.youtubeapp.MainActivity.currentArtist = lastArtist
         
         if (!com.eetu.youtubeapp.MainActivity.isAppVisible) {
-            if (isPlaying) {
+            if (isPlaying && com.eetu.youtubeapp.MainActivity.isWatchPage) {
                 PlaybackService.start(context, lastTitle, lastArtist)
             } else {
                 PlaybackService.stop(context)
