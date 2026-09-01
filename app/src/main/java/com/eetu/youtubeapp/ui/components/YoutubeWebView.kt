@@ -845,7 +845,13 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                             document.querySelector('.ad-showing') || 
                             document.querySelector('.ad-interrupting') ||
                             document.querySelector('.ytp-ad-player-overlay') ||
-                            document.querySelector('.ytm-ad-playability-overlay-renderer')
+                            document.querySelector('.ytm-ad-playability-overlay-renderer') ||
+                            document.querySelector('.ytp-ad-player-overlay-instream-info') ||
+                            document.querySelector('.ytp-ad-player-overlay-layout') ||
+                            document.querySelector('ytm-promoted-video-renderer') ||
+                            document.querySelector('.ytp-ad-image') ||
+                            document.querySelector('.ytm-promoted-sparkles-web-renderer') ||
+                            document.querySelector('.ytp-ad-skip-button-slot')
                         );
                         const isWatchPage = window.location.pathname.startsWith('/watch') || window.location.pathname.startsWith('/shorts');
                         
@@ -1019,7 +1025,13 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                     document.querySelector('.ad-showing') || 
                     document.querySelector('.ad-interrupting') ||
                     document.querySelector('.ytp-ad-player-overlay') ||
-                    document.querySelector('.ytm-ad-playability-overlay-renderer')
+                    document.querySelector('.ytm-ad-playability-overlay-renderer') ||
+                    document.querySelector('.ytp-ad-player-overlay-instream-info') ||
+                    document.querySelector('.ytp-ad-player-overlay-layout') ||
+                    document.querySelector('ytm-promoted-video-renderer') ||
+                    document.querySelector('.ytp-ad-image') ||
+                    document.querySelector('.ytm-promoted-sparkles-web-renderer') ||
+                    document.querySelector('.ytp-ad-skip-button-slot')
                 );
                 
                 // Extract metadata
@@ -1050,6 +1062,19 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
 
                     const { video, videoId, isAd, title, channelName } = getInfo();
                     window._sb_player = video;
+                    
+                    if (video) {
+                        const captionContainers = document.querySelectorAll('.ytp-caption-window-container, .ytm-caption-window-container, .caption-window');
+                        if (isAd) {
+                            video.style.opacity = '0';
+                            video.style.pointerEvents = 'none';
+                            captionContainers.forEach(c => c.style.display = 'none');
+                        } else {
+                            video.style.opacity = '1';
+                            video.style.pointerEvents = 'auto';
+                            captionContainers.forEach(c => c.style.display = '');
+                        }
+                    }
                     
                     // Fetch segments as soon as we have a videoId, even if an ad is playing.
                     // This allows pre-fetching while the ad is showing.
