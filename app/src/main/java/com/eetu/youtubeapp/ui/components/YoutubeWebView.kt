@@ -1051,6 +1051,7 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
             let lastTitle = null;
             let lastIsPlaying = null;
             let lastHref = null;
+            let lastAdTime = 0;
             
             setInterval(() => {
                 try {
@@ -1068,8 +1069,64 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                         if (isAd) {
                             video.style.opacity = '0';
                             video.style.pointerEvents = 'none';
+                            
+                            // YouTube's player sometimes aggressively overrides muted state, so we constantly enforce it
+                            if (video._sb_ad_muted === undefined) {
+                                video._sb_prev_muted = video.muted;
+                                video._sb_prev_vol = video.volume;
+                                video._sb_ad_muted = true;
+                            }
+                            video.muted = true;
+                            video.volume = 0;
+                            
                             captionContainers.forEach(c => c.style.display = 'none');
+                            
+                            // Iterate through potential skip/close targets to handle "post ad" cards and overlays
+                            const clickTargets = document.querySelectorAll('button, [role="button"], [class*="skip"], [class*="close"]');
+                            for (let i = 0; i < clickTargets.length; i++) {
+                                const btn = clickTargets[i];
+                                
+                                const cls = (btn.className || '').toString().toLowerCase();
+                                const text = (btn.textContent || '').toLowerCase().trim();
+                                
+                                const isSkipClass = cls.includes('skip-ad') || cls.includes('ad-skip') || cls.includes('skip-button');
+                                const isCloseClass = cls.includes('ad-overlay-close') || cls.includes('ad-close-button');
+                                const isSkipText = text === 'skip' || text === 'skip ad' || text === 'skip ads';
+                                
+                                if (isSkipClass || isCloseClass || isSkipText) {
+                                    try {
+                                        btn.click();
+                                        btn.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+                                        btn.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
+                                        const events = ['mousedown', 'mouseup', 'touchstart', 'touchend'];
+                                        events.forEach(eventType => {
+                                            btn.dispatchEvent(new Event(eventType, { bubbles: true, cancelable: true }));
+                                        });
+                                    } catch(e) {}
+                                }
+                            }
+                            
+                            // The ultimate fallback: If we are in an ad, simply seek to the very end of the ad video.
+                            // This instantly finishes the ad, triggering the player to move on, bypassing unskippable ads entirely.
+                            if (video.duration && !isNaN(video.duration) && video.duration > 0) {
+                                if (video.currentTime < video.duration - 0.5) {
+                                    video.currentTime = video.duration - 0.1;
+                                }
+                            }
                         } else {
+                            // Restore audio if it was muted by the ad blocker
+                            if (video._sb_ad_muted) {
+                                video.muted = video._sb_prev_muted;
+                                if (video._sb_prev_vol !== undefined) {
+                                    video.volume = video._sb_prev_vol;
+                                }
+                                video._sb_ad_muted = undefined;
+                            }
+                            
+                            // Ensure normal playback rate is restored if it was sped up
+//                            if (video.playbackRate > 2.0) {
+//                                video.playbackRate = 1.0;
+//                            }
                             video.style.opacity = '1';
                             video.style.pointerEvents = 'auto';
                             captionContainers.forEach(c => c.style.display = '');
@@ -1099,8 +1156,13 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                         AndroidBridge.updatePlaybackState(isPlaying);
                     }
                     
-                    // Only process time updates and rendering if not in an ad.
-                    if (video && !video.paused && !isAd) {
+                    if (isAd) {
+                        lastAdTime = Date.now();
+                    }
+                    
+                    // Only process time updates and rendering if not in an ad and after a short cooldown.
+                    // This prevents SponsorBlock from triggering on invalid times during ad transitions.
+                    if (video && !video.paused && !isAd && (Date.now() - lastAdTime > 1500)) {
                         AndroidBridge.onTimeUpdate(video.currentTime);
                     }
 
