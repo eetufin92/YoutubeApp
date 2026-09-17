@@ -17,9 +17,12 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.eetu.youtubeapp.data.AdBlockManager
+import java.io.ByteArrayInputStream
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -33,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -80,6 +84,7 @@ fun YoutubeWebView(
     onVideoDimensionsChanged: (Int, Int) -> Unit = { _, _ -> },
     onOpenSettings: () -> Unit = {},
     onOpenBrowserSettings: () -> Unit = {},
+    onOpenAdBlockSettings: () -> Unit = {},
     jumpToTimeRequest: Double? = null,
     onJumpToTimeHandled: () -> Unit = {},
     loadUrlRequest: String? = null,
@@ -88,6 +93,7 @@ fun YoutubeWebView(
 ) {
     val context = LocalContext.current
     val youtubeSettingsManager = remember { YouTubeSettingsManager(context) }
+    val adBlockManager = remember { AdBlockManager.getInstance(context) }
     val isDark = isSystemInDarkTheme()
     val subtitleSize = youtubeSettingsManager.getSubtitleSize()
     val autoDim = youtubeSettingsManager.getAutoDim()
@@ -181,6 +187,7 @@ fun YoutubeWebView(
     val currentOnHighlightDetected by rememberUpdatedState(onHighlightDetected)
     val currentOnOpenSettings by rememberUpdatedState(onOpenSettings)
     val currentOnOpenBrowserSettings by rememberUpdatedState(onOpenBrowserSettings)
+    val currentOnOpenAdBlockSettings by rememberUpdatedState(onOpenAdBlockSettings)
     val currentOnVideoDimensionsChanged by rememberUpdatedState(onVideoDimensionsChanged)
 
     val noticeDuration = remember { youtubeSettingsManager.getNoticeDuration() }
@@ -328,11 +335,36 @@ fun YoutubeWebView(
                     addJavascriptInterface(bridge, "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {
+                        override fun shouldInterceptRequest(
+                            view: WebView?,
+                            request: WebResourceRequest?
+                        ): WebResourceResponse? {
+                            val requestUrl = request?.url
+                            if (requestUrl != null) {
+                                val host = requestUrl.host
+                                val urlString = requestUrl.toString()
+                                if (adBlockManager.isUrlBlocked(host, urlString)) {
+                                    return WebResourceResponse(
+                                        "text/plain",
+                                        "UTF-8",
+                                        204,
+                                        "No Content",
+                                        emptyMap(),
+                                        ByteArrayInputStream(ByteArray(0))
+                                    )
+                                }
+                            }
+                            return super.shouldInterceptRequest(view, request)
+                        }
+
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             super.onPageStarted(view, url, favicon)
                             onLoadingStateChanged(true)
                             canGoBack = view?.canGoBack() ?: false
                             view?.evaluateJavascript("if(window.resetDimTimer) window.resetDimTimer();", null)
+                            if (url?.contains("youtube.com") == true && adBlockManager.isAdBlockEnabled()) {
+                                view?.evaluateJavascript(adBlockManager.getScriptletJs(), null)
+                            }
                         }
 
                         override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -348,7 +380,7 @@ fun YoutubeWebView(
                             canGoBack = view?.canGoBack() ?: false
                             currentUrl = url ?: ""
                             if (url?.contains("youtube.com") == true) {
-                                injectScripts(view, isDark, subtitleSize, autoDim, preferredCaptionLang)
+                                injectScripts(view, isDark, subtitleSize, autoDim, preferredCaptionLang, adBlockManager)
                             }
                         }
 
@@ -566,6 +598,14 @@ fun YoutubeWebView(
                         }
                     )
                     DropdownMenuItem(
+                        text = { Text("Ad Blocker Settings") },
+                        leadingIcon = { Icon(Icons.Filled.Shield, contentDescription = null) },
+                        onClick = {
+                            showMenu = false
+                            onOpenAdBlockSettings()
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Browser Settings") },
                         leadingIcon = { Icon(Icons.Filled.Language, contentDescription = null) },
                         onClick = {
@@ -639,8 +679,14 @@ fun YoutubeWebView(
     }
 }
 
-private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int, autoDim: Boolean, preferredLang: String) {
+private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int, autoDim: Boolean, preferredLang: String, adBlockManager: AdBlockManager) {
     val view = webView ?: return
+
+    if (adBlockManager.isAdBlockEnabled()) {
+        view.evaluateJavascript(adBlockManager.getScriptletJs(), null)
+    }
+
+    val adBlockCss = if (adBlockManager.isAdBlockEnabled()) adBlockManager.getCosmeticCss() else ""
 
     val cosmeticScript = """
         (function() {
@@ -662,6 +708,7 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                 document.head.appendChild(style);
             }
             style.textContent = `
+                $adBlockCss
                 .mobile-topbar-header-content.ytd-app-promo,
                 .ytd-app-promo,
                 ytm-pwa-install-banner,
@@ -1065,71 +1112,12 @@ private fun injectScripts(webView: WebView?, isDark: Boolean, subtitleSize: Int,
                     window._sb_player = video;
                     
                     if (video) {
-                        const captionContainers = document.querySelectorAll('.ytp-caption-window-container, .ytm-caption-window-container, .caption-window');
                         if (isAd) {
-                            video.style.opacity = '0';
-                            video.style.pointerEvents = 'none';
-                            
-                            // YouTube's player sometimes aggressively overrides muted state, so we constantly enforce it
-                            if (video._sb_ad_muted === undefined) {
-                                video._sb_prev_muted = video.muted;
-                                video._sb_prev_vol = video.volume;
-                                video._sb_ad_muted = true;
+                            // If an ad element ever appears in the DOM as fallback, click the skip button if available
+                            const skipBtn = document.querySelector('.ytp-ad-skip-button-modern, .ytp-ad-skip-button, .ytm-skip-ad-button, .videoAdUiSkipButton');
+                            if (skipBtn) {
+                                try { skipBtn.click(); } catch(e) {}
                             }
-                            video.muted = true;
-                            video.volume = 0;
-                            
-                            captionContainers.forEach(c => c.style.display = 'none');
-                            
-                            // Iterate through potential skip/close targets to handle "post ad" cards and overlays
-                            const clickTargets = document.querySelectorAll('button, [role="button"], [class*="skip"], [class*="close"]');
-                            for (let i = 0; i < clickTargets.length; i++) {
-                                const btn = clickTargets[i];
-                                
-                                const cls = (btn.className || '').toString().toLowerCase();
-                                const text = (btn.textContent || '').toLowerCase().trim();
-                                
-                                const isSkipClass = cls.includes('skip-ad') || cls.includes('ad-skip') || cls.includes('skip-button');
-                                const isCloseClass = cls.includes('ad-overlay-close') || cls.includes('ad-close-button');
-                                const isSkipText = text === 'skip' || text === 'skip ad' || text === 'skip ads';
-                                
-                                if (isSkipClass || isCloseClass || isSkipText) {
-                                    try {
-                                        btn.click();
-                                        btn.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
-                                        btn.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
-                                        const events = ['mousedown', 'mouseup', 'touchstart', 'touchend'];
-                                        events.forEach(eventType => {
-                                            btn.dispatchEvent(new Event(eventType, { bubbles: true, cancelable: true }));
-                                        });
-                                    } catch(e) {}
-                                }
-                            }
-                            
-                            // The ultimate fallback: If we are in an ad, simply seek to the very end of the ad video.
-                            // This instantly finishes the ad, triggering the player to move on, bypassing unskippable ads entirely.
-                            if (video.duration && !isNaN(video.duration) && video.duration > 0) {
-                                if (video.currentTime < video.duration - 0.5) {
-                                    video.currentTime = video.duration - 0.1;
-                                }
-                            }
-                        } else {
-                            // Restore audio if it was muted by the ad blocker
-                            if (video._sb_ad_muted) {
-                                video.muted = video._sb_prev_muted;
-                                if (video._sb_prev_vol !== undefined) {
-                                    video.volume = video._sb_prev_vol;
-                                }
-                                video._sb_ad_muted = undefined;
-                            }
-                            
-                            // Ensure normal playback rate is restored if it was sped up
-//                            if (video.playbackRate > 2.0) {
-//                                video.playbackRate = 1.0;
-//                            }
-                            video.style.opacity = '1';
-                            video.style.pointerEvents = 'auto';
-                            captionContainers.forEach(c => c.style.display = '');
                         }
                     }
                     

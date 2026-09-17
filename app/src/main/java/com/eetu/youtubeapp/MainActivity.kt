@@ -58,6 +58,7 @@ import com.eetu.youtubeapp.navigation.Destination
 import com.eetu.youtubeapp.ui.components.YoutubeWebView
 import com.eetu.youtubeapp.ui.settings.SettingsScreen
 import com.eetu.youtubeapp.ui.settings.BrowserSettingsScreen
+import com.eetu.youtubeapp.ui.settings.AdBlockSettingsScreen
 import com.eetu.youtubeapp.ui.theme.YoutubeAppTheme
 
 class MainActivity : ComponentActivity() {
@@ -155,8 +156,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             YoutubeAppTheme {
+                val context = LocalContext.current
+                val adBlockManager = remember { com.eetu.youtubeapp.data.AdBlockManager.getInstance(context) }
+
+                LaunchedEffect(Unit) {
+                    adBlockManager.autoUpdateIfDue()
+                }
+
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    val context = LocalContext.current
                     val launcher = rememberLauncherForActivityResult(
                         ActivityResultContracts.RequestPermission()
                     ) { }
@@ -203,6 +210,11 @@ class MainActivity : ComponentActivity() {
                                         if (!backStack.contains(Destination.BrowserSettings)) {
                                             backStack.add(Destination.BrowserSettings)
                                         }
+                                    },
+                                    onNavigateToAdBlockSettings = {
+                                        if (!backStack.contains(Destination.AdBlockSettings)) {
+                                            backStack.add(Destination.AdBlockSettings)
+                                        }
                                     }
                                 )
                             }
@@ -223,6 +235,18 @@ class MainActivity : ComponentActivity() {
                             isPlayerVisible = false
                             NavEntry(key = destination) {
                                 BrowserSettingsScreen(
+                                    onNavigateBack = { 
+                                        if (backStack.size > 1) {
+                                            backStack.removeAt(backStack.size - 1)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        is Destination.AdBlockSettings -> {
+                            isPlayerVisible = false
+                            NavEntry(key = destination) {
+                                AdBlockSettingsScreen(
                                     onNavigateBack = { 
                                         if (backStack.size > 1) {
                                             backStack.removeAt(backStack.size - 1)
@@ -257,7 +281,8 @@ fun PlayerScreen(
     onFullscreenChanged: (Boolean) -> Unit = {},
     isInPip: Boolean = false,
     onNavigateToSettings: () -> Unit,
-    onNavigateToBrowserSettings: () -> Unit
+    onNavigateToBrowserSettings: () -> Unit,
+    onNavigateToAdBlockSettings: () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -362,6 +387,7 @@ fun PlayerScreen(
                     },
                     onOpenSettings = onNavigateToSettings,
                     onOpenBrowserSettings = onNavigateToBrowserSettings,
+                    onOpenAdBlockSettings = onNavigateToAdBlockSettings,
                     jumpToTimeRequest = jumpToTimeRequest,
                     onJumpToTimeHandled = { jumpToTimeRequest = null },
                     loadUrlRequest = externalUrl,

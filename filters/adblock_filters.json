@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "blockedDomains": [
+    "googleads.g.doubleclick.net",
+    "ad.doubleclick.net",
+    "pubads.g.doubleclick.net",
+    "securepubads.g.doubleclick.net",
+    "pagead2.googlesyndication.com",
+    "pagead2.googleadservices.com",
+    "adservice.google.com",
+    "afs.googlesyndication.com",
+    "stats.g.doubleclick.net"
+  ],
+  "blockedUrlKeywords": [
+    "/pagead/",
+    "/api/stats/ads",
+    "/get_midroll_info",
+    "/ptracking",
+    "adformat="
+  ],
+  "cosmeticCssSelectors": [
+    "ytd-ad-slot-renderer",
+    "ytm-promoted-sparkles-web-renderer",
+    "ytm-promoted-video-renderer",
+    "ytm-companion-ad-renderer",
+    "ytm-brand-teaser-renderer",
+    "ytm-app-promo-renderer",
+    ".ytm-app-promo-renderer",
+    "ytm-item-section-renderer[section-identifier=\"app-promo\"]",
+    "#player-ads",
+    ".ad-showing",
+    ".ad-interrupting",
+    ".ytp-ad-overlay-container",
+    ".ytp-ad-message-container",
+    ".ytp-ad-action-interstitial",
+    ".ytp-ad-player-overlay",
+    ".ytp-ad-player-overlay-layout",
+    ".ytp-ad-player-overlay-skip-or-preview",
+    ".ytp-ad-skip-ad-slot",
+    ".ytp-ad-skip-button-slot",
+    "ytm-ad-playability-overlay-renderer",
+    "ytd-in-feed-ad-layout-renderer",
+    "ytd-player-legacy-desktop-watch-ads-renderer",
+    ".video-ads.ytp-ad-module",
+    ".ytp-ad-module"
+  ],
+  "prunedKeys": [
+    "adPlacements",
+    "adSlots",
+    "playerAds",
+    "adBreakHeartbeatParams",
+    "adPlacementRenderer"
+  ]
+}

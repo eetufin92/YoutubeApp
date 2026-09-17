@@ -13,4 +13,7 @@ sealed interface Destination : NavKey {
 
     @Serializable
     data object BrowserSettings : Destination
+
+    @Serializable
+    data object AdBlockSettings : Destination
 }
