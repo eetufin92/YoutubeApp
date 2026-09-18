@@ -44,11 +44,6 @@ class AdBlockManager(private val context: Context) {
             .build()
     }
 
-    private val moshi = Moshi.Builder()
-        .addLast(KotlinJsonAdapterFactory())
-        .build()
-
-    private val filtersAdapter = moshi.adapter(AdBlockFilters::class.java)
     private val subscriptionListAdapter = moshi.adapter<List<FilterListSubscription>>(
         Types.newParameterizedType(List::class.java, FilterListSubscription::class.java)
     )
@@ -210,6 +205,187 @@ class AdBlockManager(private val context: Context) {
             "adBreakHeartbeatParams",
             "adPlacementRenderer"
         )
+
+        val PROTECTED_JSON_KEYS = setOf(
+            "playerresponse",
+            "player_response",
+            "streamingdata",
+            "videodetails",
+            "playabilitystatus",
+            "responsecontext",
+            "data",
+            "entries",
+            "urls",
+            "url",
+            "value",
+            "values",
+            "require",
+            "enabled",
+            "config",
+            "actions",
+            "contents",
+            "endpoint",
+            "command",
+            "frameworkupdates",
+            "client_store_initial_state",
+            "datalayer",
+            "captiontracks",
+            "captions",
+            "playbacktracking",
+            "storyboards"
+        )
+
+        private val moshi = Moshi.Builder()
+            .addLast(KotlinJsonAdapterFactory())
+            .build()
+
+        private val filtersAdapter = moshi.adapter(AdBlockFilters::class.java)
+
+        fun parseFilterContent(content: String): AdBlockFilters {
+            val trimmed = content.trim()
+            if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+                try {
+                    val parsed = filtersAdapter.fromJson(trimmed)
+                    if (parsed != null) {
+                        return parsed.copy(
+                            blockedDomains = parsed.blockedDomains.filter { !isProtectedDomain(it) },
+                            prunedKeys = parsed.prunedKeys.filter { !PROTECTED_JSON_KEYS.contains(it.lowercase()) }
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Ignore json parsing error, fall back to line parser
+                }
+            }
+
+            val domains = mutableListOf<String>()
+            val keywords = mutableListOf<String>()
+            val cosmeticSelectors = mutableListOf<String>()
+            val prunedKeys = mutableListOf<String>()
+
+            trimmed.lines().forEach { rawLine ->
+                val l = rawLine.trim()
+                if (l.isEmpty() || l.startsWith("!") || l.startsWith("[")) return@forEach
+
+                // 1. Scriptlet / JSON-prune rules
+                if (l.contains("##+js(json-prune")) {
+                    val domainPart = l.substringBefore("##").trim().lowercase()
+                    val isYoutubeTarget = domainPart.split(",").any {
+                        val d = it.trim()
+                        d == "youtube.com" || d == "m.youtube.com" || d == "www.youtube.com" || d == "music.youtube.com"
+                    }
+
+                    // Only extract pruned keys from rules specifically targeting YouTube
+                    if (isYoutubeTarget) {
+                        val argsMatch = Regex("""json-prune(?:-fetch-response|-xhr-response)?,\s*(.*?)(?:\)|,\s*propsToMatch)""").find(l)
+                        val argsStr = argsMatch?.groupValues?.getOrNull(1)?.trim()
+                        if (!argsStr.isNullOrEmpty()) {
+                            argsStr.split(Regex("""[\s,]+""")).forEach { rawToken ->
+                                val token = rawToken.trim().trim('"', '\'')
+                                if (token.isNotEmpty()) {
+                                    // Extract the leaf property: e.g. "playerResponse.adPlacements" -> "adPlacements"
+                                    val leaf = token.substringAfterLast(".").trim('[', ']', '-', ' ')
+                                    if (leaf.isNotEmpty() && leaf.matches(Regex("^[a-zA-Z0-9_]+$"))) {
+                                        if (!PROTECTED_JSON_KEYS.contains(leaf.lowercase())) {
+                                            prunedKeys.add(leaf)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return@forEach
+                }
+
+                // 2. Network domain blocking rules: e.g. ||doubleclick.net^
+                if (l.startsWith("||")) {
+                    val ruleWithoutPrefix = l.removePrefix("||")
+                    val hasPath = ruleWithoutPrefix.contains("/")
+                    if (!hasPath) {
+                        val domain = ruleWithoutPrefix.substringBefore("^").substringBefore("$").trim().lowercase()
+                        if (domain.isNotEmpty() && domain.contains(".") && !isProtectedDomain(domain) && !domain.contains("*")) {
+                            domains.add(domain)
+                        }
+                    } else {
+                        // Path rule: if it targets youtube and has known ad path keywords, add keyword
+                        if (ruleWithoutPrefix.startsWith("youtube.com/") || ruleWithoutPrefix.startsWith("m.youtube.com/")) {
+                            val pathPart = ruleWithoutPrefix.substringAfter("/")
+                            if (pathPart.contains("pagead") || pathPart.contains("ptracking") || pathPart.contains("api/stats/ads")) {
+                                keywords.add(pathPart.substringBefore("*").substringBefore("^").substringBefore("$"))
+                            }
+                        }
+                    }
+                    return@forEach
+                }
+
+                // 3. Cosmetic element hiding rules: e.g. youtube.com##.ad-showing
+                if (l.contains("##")) {
+                    val domainPart = l.substringBefore("##").trim().lowercase()
+                    val selector = l.substringAfter("##").trim()
+
+                    // If domain is specified, it MUST target youtube
+                    val isYoutubeTarget = domainPart.isNotEmpty() && 
+                        domainPart.split(",").any { 
+                            val d = it.trim()
+                            d == "youtube.com" || d == "m.youtube.com" || d == "www.youtube.com" 
+                        }
+
+                    // If generic (no domain), only accept if specifically matching ad element identifiers
+                    val isSafeGeneric = domainPart.isEmpty() && (
+                        selector.contains("ad-") || 
+                        selector.contains("promoted") || 
+                        selector.contains("sponsor") || 
+                        selector.contains("ytp-ad") || 
+                        selector.contains("player-ads")
+                    )
+
+                    // Critical: Never allow cosmetic selectors that hide the video player or its container!
+                    val isPlayerElement = selector == "video" || 
+                        selector == "#movie_player" || 
+                        selector == ".html5-video-player" ||
+                        selector == ".html5-main-video" ||
+                        selector == ".video-stream" ||
+                        selector.startsWith("video") ||
+                        selector.contains(".html5-video-player") ||
+                        selector.contains("#player-container") ||
+                        selector.contains(".player-container") ||
+                        selector.contains(".ytm-video-player")
+
+                    if ((isYoutubeTarget || isSafeGeneric) && !isPlayerElement && selector.isNotEmpty() && !selector.startsWith("+js")) {
+                        // Reject non-standard / procedural selectors unsupported by standard CSS:
+                        val isProcedural = selector.contains(":has(") ||
+                                selector.contains(":has-text(") ||
+                                selector.contains(":upward(") ||
+                                selector.contains(":xpath(") ||
+                                selector.contains(":matches-path(") ||
+                                selector.contains(":contains(") ||
+                                selector.contains("[-ext-") ||
+                                selector.contains("{") ||
+                                selector.contains("}")
+
+                        if (!isProcedural && selector.length < 200) {
+                            cosmeticSelectors.add(selector)
+                        }
+                    }
+                    return@forEach
+                }
+
+                // 4. Regex keywords e.g. /pagead/
+                if (l.startsWith("/") && l.endsWith("/") && l.length > 5) {
+                    val kw = l.removeSurrounding("/")
+                    if (kw.contains("pagead") || kw.contains("api/stats/ads") || kw.contains("get_midroll_info")) {
+                        keywords.add(kw)
+                    }
+                }
+            }
+
+            return AdBlockFilters(
+                version = 1,
+                blockedDomains = domains.distinct(),
+                blockedUrlKeywords = keywords.distinct(),
+                cosmeticCssSelectors = cosmeticSelectors.distinct(),
+                prunedKeys = prunedKeys.filter { !PROTECTED_JSON_KEYS.contains(it.lowercase()) }.distinct()
+            )
+        }
     }
 
     init {
@@ -363,7 +539,8 @@ class AdBlockManager(private val context: Context) {
         domainSet = domains.map { it.lowercase() }.toSet()
         keywordList = keywords.map { it.lowercase() }.distinct()
         cachedCss = generateCosmeticCss(cosmeticSelectors.toList())
-        cachedScriptlet = generateScriptletJs(prunedKeys.toList().ifEmpty { DEFAULT_PRUNED_KEYS })
+        val safePrunedKeys = prunedKeys.filter { !PROTECTED_JSON_KEYS.contains(it.lowercase()) }.distinct()
+        cachedScriptlet = generateScriptletJs(safePrunedKeys.ifEmpty { DEFAULT_PRUNED_KEYS })
     }
 
     private fun generateCosmeticCss(selectors: List<String>): String {
@@ -380,7 +557,13 @@ class AdBlockManager(private val context: Context) {
                 if (window._sb_adblock_defuser_installed) return;
                 window._sb_adblock_defuser_installed = true;
 
-                const PRUNED_KEYS = [$keysArray];
+                const PROTECTED_KEYS = new Set([
+                    "playerResponse", "player_response", "streamingData", "videoDetails",
+                    "playabilityStatus", "responseContext", "data", "entries", "urls", "url",
+                    "value", "values", "require", "enabled", "config", "captionTracks"
+                ]);
+
+                const PRUNED_KEYS = [$keysArray].filter(k => !PROTECTED_KEYS.has(k));
 
                 function pruneAds(obj) {
                     if (!obj || typeof obj !== 'object') return obj;
@@ -449,10 +632,14 @@ class AdBlockManager(private val context: Context) {
 
         // Never block core video playback streams, player code, or basic navigation endpoints
         if (lowerUrl.contains("/videoplayback") || 
+            lowerUrl.contains("/initplayback") ||
+            lowerUrl.contains("/youtubei/v1/") ||
+            lowerUrl.contains("/get_video_info") ||
             lowerUrl.contains("/s/player/") || 
             lowerUrl.contains("/base.js") ||
-            lowerUrl.contains("/watch?") ||
-            lowerUrl.contains("/results?") ||
+            lowerUrl.contains("/watch") ||
+            lowerUrl.contains("/shorts") ||
+            lowerUrl.contains("/results") ||
             lowerUrl.contains("/channel/")
         ) {
             return false
@@ -557,114 +744,5 @@ class AdBlockManager(private val context: Context) {
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
-
-    private fun parseFilterContent(content: String): AdBlockFilters {
-        val trimmed = content.trim()
-        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-            try {
-                val parsed = filtersAdapter.fromJson(trimmed)
-                if (parsed != null) {
-                    return parsed.copy(
-                        blockedDomains = parsed.blockedDomains.filter { !isProtectedDomain(it) }
-                    )
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("AdBlockManager", "JSON parsing failed, falling back to line parser", e)
-            }
-        }
-
-        val domains = mutableListOf<String>()
-        val keywords = mutableListOf<String>()
-        val cosmeticSelectors = mutableListOf<String>()
-        val prunedKeys = mutableListOf<String>()
-
-        trimmed.lines().forEach { rawLine ->
-            val l = rawLine.trim()
-            if (l.isEmpty() || l.startsWith("!") || l.startsWith("[")) return@forEach
-
-            // 1. Scriptlet / JSON-prune rules
-            if (l.contains("##+js(json-prune")) {
-                val match = Regex("""json-prune[,\s]+([a-zA-Z0-9_]+)""").find(l)
-                match?.groupValues?.getOrNull(1)?.let { prunedKeys.add(it) }
-                return@forEach
-            }
-
-            // 2. Network domain blocking rules: e.g. ||doubleclick.net^
-            if (l.startsWith("||")) {
-                val ruleWithoutPrefix = l.removePrefix("||")
-                val hasPath = ruleWithoutPrefix.contains("/")
-                if (!hasPath) {
-                    val domain = ruleWithoutPrefix.substringBefore("^").substringBefore("$").trim().lowercase()
-                    if (domain.isNotEmpty() && domain.contains(".") && !isProtectedDomain(domain) && !domain.contains("*")) {
-                        domains.add(domain)
-                    }
-                } else {
-                    // Path rule: if it targets youtube and has known ad path keywords, add keyword
-                    if (ruleWithoutPrefix.startsWith("youtube.com/") || ruleWithoutPrefix.startsWith("m.youtube.com/")) {
-                        val pathPart = ruleWithoutPrefix.substringAfter("/")
-                        if (pathPart.contains("pagead") || pathPart.contains("ptracking") || pathPart.contains("api/stats/ads")) {
-                            keywords.add(pathPart.substringBefore("*").substringBefore("^").substringBefore("$"))
-                        }
-                    }
-                }
-                return@forEach
-            }
-
-            // 3. Cosmetic element hiding rules: e.g. youtube.com##.ad-showing
-            if (l.contains("##")) {
-                val domainPart = l.substringBefore("##").trim()
-                val selector = l.substringAfter("##").trim()
-
-                // If domain is specified, it MUST target youtube
-                val isYoutubeTarget = domainPart.isEmpty() || 
-                    domainPart.split(",").any { 
-                        it.trim() == "youtube.com" || it.trim() == "m.youtube.com" || it.trim() == "www.youtube.com" 
-                    }
-
-                // If generic (no domain), only accept if specifically matching ad element identifiers
-                val isSafeGeneric = domainPart.isEmpty() && (
-                    selector.contains("ad-") || 
-                    selector.contains("promoted") || 
-                    selector.contains("sponsor") || 
-                    selector.contains("ytp-ad") || 
-                    selector.contains("player-ads")
-                )
-
-                if ((isYoutubeTarget || isSafeGeneric) && selector.isNotEmpty() && !selector.startsWith("+js")) {
-                    // Reject non-standard / procedural selectors unsupported by standard CSS:
-                    val isProcedural = selector.contains(":has(") ||
-                            selector.contains(":has-text(") ||
-                            selector.contains(":upward(") ||
-                            selector.contains(":xpath(") ||
-                            selector.contains(":matches-path(") ||
-                            selector.contains(":contains(") ||
-                            selector.contains("[-ext-") ||
-                            selector.contains("{") ||
-                            selector.contains("}")
-
-                    if (!isProcedural && selector.length < 200) {
-                        cosmeticSelectors.add(selector)
-                    }
-                }
-                return@forEach
-            }
-
-            // 4. Regex keywords e.g. /pagead/
-            if (l.startsWith("/") && l.endsWith("/") && l.length > 5) {
-                val kw = l.removeSurrounding("/")
-                if (kw.contains("pagead") || kw.contains("api/stats/ads") || kw.contains("get_midroll_info")) {
-                    keywords.add(kw)
-                }
-            }
-        }
-
-        return AdBlockFilters(
-            version = 1,
-            blockedDomains = domains.distinct(),
-            blockedUrlKeywords = keywords.distinct(),
-            cosmeticCssSelectors = cosmeticSelectors.distinct(),
-            prunedKeys = prunedKeys.distinct()
-        )
     }
 }

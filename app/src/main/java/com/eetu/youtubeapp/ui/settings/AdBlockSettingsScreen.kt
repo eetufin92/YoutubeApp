@@ -336,6 +336,12 @@ fun AdBlockSettingsScreen(
                                 onCheckedChange = { enabled ->
                                     adBlockManager.toggleSubscription(sub.id, enabled)
                                     refreshSubscriptions()
+                                    if (enabled && sub.lastUpdate == 0L) {
+                                        scope.launch {
+                                            adBlockManager.updateSubscription(sub.id)
+                                            refreshSubscriptions()
+                                        }
+                                    }
                                 }
                             )
                         }
