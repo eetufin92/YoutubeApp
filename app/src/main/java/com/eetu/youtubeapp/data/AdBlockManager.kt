@@ -213,6 +213,8 @@ class AdBlockManager(private val context: Context) {
             "videodetails",
             "playabilitystatus",
             "responsecontext",
+            "initialdata",
+            "initial_data",
             "data",
             "entries",
             "urls",
@@ -559,7 +561,7 @@ class AdBlockManager(private val context: Context) {
 
                 const PROTECTED_KEYS = new Set([
                     "playerResponse", "player_response", "streamingData", "videoDetails",
-                    "playabilityStatus", "responseContext", "data", "entries", "urls", "url",
+                    "playabilityStatus", "responseContext", "initialData", "data", "entries", "urls", "url",
                     "value", "values", "require", "enabled", "config", "captionTracks"
                 ]);
 
